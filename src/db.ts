@@ -1,30 +1,30 @@
-import Database, { type Database as DB } from 'better-sqlite3'
+import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DB_PATH } from './config.js'
 import { logger } from './logger.js'
 
-let db: DB | null = null
+let db: DatabaseSync | null = null
 
-export function initDatabase(): DB {
+export function initDatabase(): DatabaseSync {
   if (db) return db
   mkdirSync(dirname(DB_PATH), { recursive: true })
-  db = new Database(DB_PATH)
-  db.pragma('journal_mode = WAL')
-  db.pragma('foreign_keys = ON')
-  db.pragma('synchronous = NORMAL')
+  db = new DatabaseSync(DB_PATH)
+  db.exec('PRAGMA journal_mode = WAL')
+  db.exec('PRAGMA foreign_keys = ON')
+  db.exec('PRAGMA synchronous = NORMAL')
 
   applySchema(db)
   logger.info({ path: DB_PATH }, 'db initialised')
   return db
 }
 
-export function getDb(): DB {
+export function getDb(): DatabaseSync {
   if (!db) throw new Error('db not initialised — call initDatabase() first')
   return db
 }
 
-function applySchema(db: DB): void {
+function applySchema(db: DatabaseSync): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT NOT NULL,
