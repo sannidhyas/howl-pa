@@ -5,6 +5,15 @@ export const PROJECT_ROOT = projectRootFrom(import.meta.url)
 
 const raw = loadEnv({ projectDir: PROJECT_ROOT })
 
+// Mirror the merged env into process.env so libraries that read directly
+// (googleapis OAuth, baileys, etc.) see the same values without each
+// module needing to re-implement .env parsing.
+for (const [k, v] of Object.entries(raw)) {
+  if (process.env[k] === undefined) process.env[k] = v
+}
+
+export const rawEnv: Readonly<Record<string, string>> = raw
+
 function required(key: string): string {
   const v = raw[key]
   if (v === undefined || v === '') {

@@ -2,7 +2,19 @@
 // in ~/.claudeclaw/.env. Run: npx tsx scripts/setup-google.ts
 
 import { createInterface } from 'node:readline/promises'
-import { authUrl, exchangeCode, googleAuthConfigured, googleTokenSaved } from '../src/google-auth.js'
+import { loadEnv, projectRootFrom } from '../src/env.js'
+
+// Load ~/.claudeclaw/.env + project .env into process.env BEFORE importing
+// google-auth which reads these at module scope.
+void projectRootFrom
+const merged = loadEnv({ projectDir: process.cwd() })
+for (const [k, v] of Object.entries(merged)) {
+  if (process.env[k] === undefined) process.env[k] = v
+}
+
+const { authUrl, exchangeCode, googleAuthConfigured, googleTokenSaved } = await import(
+  '../src/google-auth.js'
+)
 
 async function main(): Promise<void> {
   if (!googleAuthConfigured()) {
