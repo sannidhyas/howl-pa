@@ -1,0 +1,59 @@
+import type { SubagentBackend, SubagentInput, SubagentResult } from './types.js'
+import { logger } from '../logger.js'
+
+const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://localhost:11434'
+const DEFAULT_TIMEOUT_MS = 180_000
+
+export class OllamaBackend implements SubagentBackend {
+  readonly name: string
+  private readonly model: string
+
+  constructor(model: string) {
+    this.model = model
+    this.name = `ollama:${model}`
+  }
+
+  async run(input: SubagentInput): Promise<SubagentResult> {
+    const start = Date.now()
+    const result: SubagentResult = { backend: this.name, text: '', durationMs: 0 }
+    const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS
+
+    const ac = new AbortController()
+    const timer = setTimeout(() => ac.abort(), timeoutMs)
+    timer.unref()
+
+    try {
+      const res = await fetch(`${OLLAMA_URL}/api/chat`, {
+        method: 'POST',
+        signal: ac.signal,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [{ role: 'user', content: input.prompt }],
+          stream: false,
+        }),
+      })
+      if (!res.ok) {
+        result.error = `ollama HTTP ${res.status}`
+      } else {
+        const body = (await res.json()) as {
+          message?: { content?: string }
+          prompt_eval_count?: number
+          eval_count?: number
+          total_duration?: number
+        }
+        result.text = body.message?.content?.trim() ?? ''
+        result.inputTokens = body.prompt_eval_count
+        result.outputTokens = body.eval_count
+      }
+    } catch (err) {
+      result.error = err instanceof Error ? err.message : String(err)
+      logger.warn({ err: result.error, model: this.model }, 'ollama backend failed')
+    } finally {
+      clearTimeout(timer)
+    }
+    result.durationMs = Date.now() - start
+    if (!result.text && !result.error) result.error = 'ollama: empty response'
+    return result
+  }
+}

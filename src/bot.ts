@@ -24,6 +24,11 @@ import {
 } from './db.js'
 import { runMissionByName, scheduledTaskSummary } from './scheduler.js'
 import { recall } from './memory.js'
+import {
+  BACKENDS,
+  availableBackends,
+  dispatchSubagent,
+} from './subagent/router.js'
 import { reindexVault } from './vault-indexer.js'
 import { mirrorThesis } from './thesis-mirror.js'
 import { routeCapture, type CaptureType } from './capture-router.js'
@@ -297,7 +302,62 @@ async function handleCommand(ctx: Context, text: string): Promise<boolean> {
           '<code>/recall &lt;query&gt;</code> · <code>/reindex</code> · <code>/mirror-thesis [--force]</code>',
           '<code>/brief</code> · <code>/nudge</code> · <code>/schedule list|pause|resume|delete</code> · <code>/mission list|run</code>',
           '<code>/wa-allow</code> · <code>/wa-remove</code> · <code>/wa-list</code>',
+          '<code>/ask [backend] &lt;prompt&gt;</code> · <code>/council [aggregator] &lt;prompt&gt;</code> · <code>/backends</code>',
         ].join('\n')
+      )
+      return true
+    }
+    case '/ask': {
+      const rest = text.split(/\s+/).slice(1)
+      let backend: string | undefined
+      if (rest[0] && BACKENDS[rest[0]]) {
+        backend = rest.shift()
+      }
+      const prompt = rest.join(' ').trim()
+      if (!prompt) {
+        await ctx.reply('usage: /ask [claude|codex|ollama:<model>] <prompt>')
+        return true
+      }
+      await ctx.reply('thinking…')
+      const outcome = await dispatchSubagent(
+        { prompt, chatId, hints: [] },
+        { mode: 'single', forcedBackend: backend }
+      )
+      await sendHtml(
+        ctx,
+        `<b>${escapeHtml(outcome.backendsUsed[0] ?? 'agent')}</b> · <i>${(outcome.durationMs / 1000).toFixed(1)}s</i>\n\n${escapeHtml(outcome.final)}`
+      )
+      return true
+    }
+    case '/council': {
+      const rest = text.split(/\s+/).slice(1)
+      let aggregator: 'merge' | 'best-of-n' | 'vote' | undefined
+      if (rest[0] && ['merge', 'best-of-n', 'vote'].includes(rest[0])) {
+        aggregator = rest.shift() as typeof aggregator
+      }
+      const prompt = rest.join(' ').trim()
+      if (!prompt) {
+        await ctx.reply('usage: /council [merge|best-of-n|vote] <prompt>')
+        return true
+      }
+      await ctx.reply(`assembling council${aggregator ? ` (${aggregator})` : ''}…`)
+      const outcome = await dispatchSubagent(
+        { prompt, chatId, hints: ['reasoning'] },
+        { mode: 'council', aggregator }
+      )
+      const memberLines = outcome.members
+        .map(r => `• <code>${escapeHtml(r.backend)}</code> ${r.error ? `⚠️ ${escapeHtml(r.error.slice(0, 80))}` : `ok (${(r.durationMs / 1000).toFixed(1)}s)`}`)
+        .join('\n')
+      await sendHtml(
+        ctx,
+        `<b>Council</b> · winner <code>${escapeHtml(outcome.winner ?? '?')}</code> · ${(outcome.durationMs / 1000).toFixed(1)}s\n${memberLines}\n\n${escapeHtml(outcome.final)}`
+      )
+      return true
+    }
+    case '/backends': {
+      await sendHtml(
+        ctx,
+        `<b>Available backends</b>\n${availableBackends().map(b => `• <code>${escapeHtml(b)}</code>`).join('\n')}`
       )
       return true
     }
