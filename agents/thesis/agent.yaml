@@ -1,0 +1,5 @@
+id: "thesis"
+displayName: "thesis"
+description: "thesis research + literature"
+model: claude-sonnet-4-6
+maxTurns: 30

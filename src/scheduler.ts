@@ -1,4 +1,10 @@
-import { parseExpression } from 'cron-parser'
+import CronParserModule from 'cron-parser'
+// cron-parser 4.x is CJS-only: `module.exports = CronParser`. ESM consumers
+// must reach methods through the default export; named imports fail with
+// SyntaxError: does not provide an export named 'parseExpression'.
+const { parseExpression } = CronParserModule as unknown as {
+  parseExpression: (expr: string, opts?: { currentDate?: Date }) => { next(): { getTime(): number } }
+}
 import { AGENT_TIMEOUT_MS, ALLOWED_CHAT_ID } from './config.js'
 import {
   dueScheduledTasks,
