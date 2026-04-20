@@ -13,6 +13,7 @@ import { createBot } from './bot.js'
 import { closeDatabase, initDatabase } from './db.js'
 import { registerKillHandler } from './security.js'
 import { initScheduler, stopScheduler } from './scheduler.js'
+import { startWhatsApp, stopWhatsApp, isWaReady } from './whatsapp.js'
 
 const BANNER = `
 ┓ ┏      ┓ ┃┓    ┏┓┏┓
@@ -81,8 +82,19 @@ async function main(): Promise<void> {
 
   initScheduler({ send, defaultChatId: String(ALLOWED_CHAT_ID) })
 
+  if (isWaReady()) {
+    try {
+      await startWhatsApp(false)
+    } catch (err) {
+      logger.warn({ err: err instanceof Error ? err.message : err }, 'wa startup failed')
+    }
+  } else {
+    logger.info('wa not configured — run `npx tsx scripts/setup-whatsapp.ts` to pair')
+  }
+
   registerKillHandler(async () => {
     stopScheduler()
+    stopWhatsApp()
     await bot.stop()
   })
 

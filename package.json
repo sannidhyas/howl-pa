@@ -15,19 +15,24 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.34",
+    "@hapi/boom": "^10.0.1",
     "@hono/node-server": "^1.13.7",
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "cron-parser": "^4.9.0",
+    "googleapis": "^171.4.0",
     "grammy": "^1.30.0",
     "hono": "^4.6.9",
     "js-yaml": "^4.1.0",
     "mammoth": "^1.12.0",
     "pino": "^9.5.0",
+    "qrcode-terminal": "^0.12.0",
     "simple-git": "^3.27.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.9.0",
+    "@types/qrcode-terminal": "^0.12.2",
     "pino-pretty": "^11.3.0",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"

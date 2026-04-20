@@ -13,10 +13,13 @@ import {
 import { redactSecrets, scanForSecrets } from './exfiltration-guard.js'
 import { runAgentWithRetry } from './agent.js'
 import {
+  allowWaContact,
   audit,
   deleteScheduledTask,
   latestSessionFor,
   listMissionTasks,
+  listWaAllowlist,
+  removeWaContact,
   setTaskStatus,
 } from './db.js'
 import { runMissionByName, scheduledTaskSummary } from './scheduler.js'
@@ -253,6 +256,49 @@ async function handleCommand(ctx: Context, text: string): Promise<boolean> {
       } catch (err) {
         await ctx.reply(`⚠️ brief error: ${err instanceof Error ? err.message : String(err)}`)
       }
+      return true
+    }
+    case '/wa-allow': {
+      const jid = parts[1]
+      const name = parts.slice(2).join(' ').trim() || undefined
+      if (!jid) {
+        await ctx.reply('usage: /wa-allow <jid> [display name]\njid format: <number>@s.whatsapp.net or <id>@g.us')
+        return true
+      }
+      allowWaContact(jid, name)
+      await ctx.reply(`✅ allowlisted ${jid}${name ? ` (${name})` : ''}`)
+      return true
+    }
+    case '/wa-remove': {
+      const jid = parts[1]
+      if (!jid) {
+        await ctx.reply('usage: /wa-remove <jid>')
+        return true
+      }
+      const ok = removeWaContact(jid)
+      await ctx.reply(ok ? `removed ${jid}` : `not in allowlist: ${jid}`)
+      return true
+    }
+    case '/wa-list': {
+      const rows = listWaAllowlist()
+      const body = rows.length === 0
+        ? '<i>no allowlisted contacts</i>'
+        : rows.map(r => `<code>${escapeHtml(r.jid)}</code>${r.display_name ? ` · ${escapeHtml(r.display_name)}` : ''}`).join('\n')
+      await sendHtml(ctx, `<b>WA allowlist</b> · ${rows.length}\n${body}`)
+      return true
+    }
+    case '/help': {
+      await sendHtml(
+        ctx,
+        [
+          '<b>Howl PA commands</b>',
+          '<code>/start</code> · <code>/status</code> · <code>/chatid</code> · <code>/newchat</code> · <code>/lock</code>',
+          '<code>/capture &lt;text&gt;</code> · <code>/note</code> · <code>/idea</code> · <code>/task</code> · <code>/thesis</code> · <code>/literature</code> · <code>/journal</code>',
+          '<code>/recall &lt;query&gt;</code> · <code>/reindex</code> · <code>/mirror-thesis [--force]</code>',
+          '<code>/brief</code> · <code>/nudge</code> · <code>/schedule list|pause|resume|delete</code> · <code>/mission list|run</code>',
+          '<code>/wa-allow</code> · <code>/wa-remove</code> · <code>/wa-list</code>',
+        ].join('\n')
+      )
       return true
     }
     default:

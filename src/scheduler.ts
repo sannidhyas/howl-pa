@@ -36,6 +36,8 @@ const BUILT_INS: BuiltIn[] = [
   { name: 'evening-nudge', mission: 'evening-nudge', schedule: '0 21 * * *', priority: 8 },
   { name: 'vault-reindex', mission: 'vault-reindex', schedule: '*/10 * * * *', priority: 1 },
   { name: 'weekly-review', mission: 'weekly-review', schedule: '0 18 * * 0', priority: 5 },
+  { name: 'gmail-poll', mission: 'gmail-poll', schedule: '*/5 * * * *', priority: 2 },
+  { name: 'calendar-poll', mission: 'calendar-poll', schedule: '*/15 * * * *', priority: 2 },
 ]
 
 function nextRunFor(schedule: string, from = new Date()): number {

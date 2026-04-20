@@ -203,6 +203,55 @@ function applySchema(db: DatabaseSync): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_mission_status ON mission_tasks(status, priority, created_at);
+
+    CREATE TABLE IF NOT EXISTS gmail_items (
+      id TEXT PRIMARY KEY,
+      thread_id TEXT,
+      sender TEXT,
+      subject TEXT,
+      snippet TEXT,
+      internal_date INTEGER,
+      labels TEXT,
+      unread INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+    );
+    CREATE INDEX IF NOT EXISTS idx_gmail_internal_date ON gmail_items(internal_date DESC);
+
+    CREATE TABLE IF NOT EXISTS calendar_events (
+      id TEXT PRIMARY KEY,
+      summary TEXT,
+      location TEXT,
+      starts_at INTEGER,
+      ends_at INTEGER,
+      html_link TEXT,
+      meet_link TEXT,
+      attendees TEXT,
+      description TEXT,
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+    );
+    CREATE INDEX IF NOT EXISTS idx_cal_starts ON calendar_events(starts_at);
+
+    CREATE TABLE IF NOT EXISTS wa_messages (
+      id TEXT PRIMARY KEY,
+      chat_jid TEXT,
+      sender_jid TEXT,
+      sender_name TEXT,
+      content_enc BLOB,
+      content_iv BLOB,
+      content_tag BLOB,
+      is_group INTEGER NOT NULL DEFAULT 0,
+      is_from_me INTEGER NOT NULL DEFAULT 0,
+      media_kind TEXT,
+      ts INTEGER,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+    );
+    CREATE INDEX IF NOT EXISTS idx_wa_chat_ts ON wa_messages(chat_jid, ts DESC);
+
+    CREATE TABLE IF NOT EXISTS wa_allowlist (
+      jid TEXT PRIMARY KEY,
+      display_name TEXT,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+    );
   `)
 }
 
@@ -644,4 +693,201 @@ export function updateMissionTaskStatus(
        WHERE id = ?`
     )
     .run(status, result ?? null, status, status, id)
+}
+
+// Gmail ----------------------------------------------------------------
+
+export type GmailItemRow = {
+  id: string
+  thread_id: string | null
+  sender: string | null
+  subject: string | null
+  snippet: string | null
+  internal_date: number | null
+  labels: string | null
+  unread: number
+  created_at: number
+}
+
+export function upsertGmailItem(item: {
+  id: string
+  threadId?: string
+  sender?: string
+  subject?: string
+  snippet?: string
+  internalDate?: number
+  labels?: string[]
+  unread?: boolean
+}): void {
+  getDb()
+    .prepare(
+      `INSERT INTO gmail_items (id, thread_id, sender, subject, snippet, internal_date, labels, unread)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         thread_id=excluded.thread_id, sender=excluded.sender, subject=excluded.subject,
+         snippet=excluded.snippet, internal_date=excluded.internal_date, labels=excluded.labels,
+         unread=excluded.unread`
+    )
+    .run(
+      item.id,
+      item.threadId ?? null,
+      item.sender ?? null,
+      item.subject ?? null,
+      item.snippet ?? null,
+      item.internalDate ?? null,
+      item.labels ? JSON.stringify(item.labels) : null,
+      item.unread === false ? 0 : 1
+    )
+}
+
+export function listGmailSince(sinceMs: number, limit = 20): GmailItemRow[] {
+  return getDb()
+    .prepare(
+      `SELECT id, thread_id, sender, subject, snippet, internal_date, labels, unread, created_at
+       FROM gmail_items WHERE internal_date >= ? ORDER BY internal_date DESC LIMIT ?`
+    )
+    .all(sinceMs, limit) as GmailItemRow[]
+}
+
+// Calendar -------------------------------------------------------------
+
+export type CalendarEventRow = {
+  id: string
+  summary: string | null
+  location: string | null
+  starts_at: number | null
+  ends_at: number | null
+  html_link: string | null
+  meet_link: string | null
+  attendees: string | null
+  description: string | null
+  updated_at: number
+}
+
+export function upsertCalendarEvent(ev: {
+  id: string
+  summary?: string
+  location?: string
+  startsAt?: number
+  endsAt?: number
+  htmlLink?: string
+  meetLink?: string
+  attendees?: string[]
+  description?: string
+}): void {
+  getDb()
+    .prepare(
+      `INSERT INTO calendar_events (id, summary, location, starts_at, ends_at, html_link, meet_link, attendees, description, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s','now') * 1000)
+       ON CONFLICT(id) DO UPDATE SET
+         summary=excluded.summary, location=excluded.location, starts_at=excluded.starts_at,
+         ends_at=excluded.ends_at, html_link=excluded.html_link, meet_link=excluded.meet_link,
+         attendees=excluded.attendees, description=excluded.description,
+         updated_at=strftime('%s','now') * 1000`
+    )
+    .run(
+      ev.id,
+      ev.summary ?? null,
+      ev.location ?? null,
+      ev.startsAt ?? null,
+      ev.endsAt ?? null,
+      ev.htmlLink ?? null,
+      ev.meetLink ?? null,
+      ev.attendees ? JSON.stringify(ev.attendees) : null,
+      ev.description ?? null
+    )
+}
+
+export function listCalendarEventsBetween(fromMs: number, toMs: number): CalendarEventRow[] {
+  return getDb()
+    .prepare(
+      `SELECT id, summary, location, starts_at, ends_at, html_link, meet_link, attendees, description, updated_at
+       FROM calendar_events WHERE starts_at >= ? AND starts_at < ? ORDER BY starts_at`
+    )
+    .all(fromMs, toMs) as CalendarEventRow[]
+}
+
+// WhatsApp -------------------------------------------------------------
+
+export type WaMessageRow = {
+  id: string
+  chat_jid: string
+  sender_jid: string | null
+  sender_name: string | null
+  content_enc: Uint8Array
+  content_iv: Uint8Array
+  content_tag: Uint8Array
+  is_group: number
+  is_from_me: number
+  media_kind: string | null
+  ts: number | null
+  created_at: number
+}
+
+export function insertWaMessage(args: {
+  id: string
+  chatJid: string
+  senderJid?: string
+  senderName?: string
+  contentEnc: Uint8Array
+  contentIv: Uint8Array
+  contentTag: Uint8Array
+  isGroup?: boolean
+  isFromMe?: boolean
+  mediaKind?: string
+  ts?: number
+}): void {
+  getDb()
+    .prepare(
+      `INSERT INTO wa_messages (id, chat_jid, sender_jid, sender_name, content_enc, content_iv, content_tag, is_group, is_from_me, media_kind, ts)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO NOTHING`
+    )
+    .run(
+      args.id,
+      args.chatJid,
+      args.senderJid ?? null,
+      args.senderName ?? null,
+      args.contentEnc,
+      args.contentIv,
+      args.contentTag,
+      args.isGroup ? 1 : 0,
+      args.isFromMe ? 1 : 0,
+      args.mediaKind ?? null,
+      args.ts ?? null
+    )
+}
+
+export function listWaMessagesSince(sinceMs: number, limit = 50): WaMessageRow[] {
+  return getDb()
+    .prepare(
+      `SELECT id, chat_jid, sender_jid, sender_name, content_enc, content_iv, content_tag,
+              is_group, is_from_me, media_kind, ts, created_at
+       FROM wa_messages WHERE ts >= ? ORDER BY ts DESC LIMIT ?`
+    )
+    .all(sinceMs, limit) as WaMessageRow[]
+}
+
+export function allowWaContact(jid: string, displayName?: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO wa_allowlist (jid, display_name) VALUES (?, ?)
+       ON CONFLICT(jid) DO UPDATE SET display_name=excluded.display_name`
+    )
+    .run(jid, displayName ?? null)
+}
+
+export function removeWaContact(jid: string): boolean {
+  return Number(getDb().prepare(`DELETE FROM wa_allowlist WHERE jid = ?`).run(jid).changes) > 0
+}
+
+export function listWaAllowlist(): Array<{ jid: string; display_name: string | null }> {
+  return getDb()
+    .prepare(`SELECT jid, display_name FROM wa_allowlist`)
+    .all() as Array<{ jid: string; display_name: string | null }>
+}
+
+export function isWaJidAllowed(jid: string): boolean {
+  const row = getDb().prepare(`SELECT 1 FROM wa_allowlist WHERE jid = ?`).get(jid)
+  return Boolean(row)
 }
