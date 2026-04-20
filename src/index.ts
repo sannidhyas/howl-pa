@@ -14,6 +14,7 @@ import { closeDatabase, initDatabase } from './db.js'
 import { registerKillHandler } from './security.js'
 import { initScheduler, stopScheduler } from './scheduler.js'
 import { startWhatsApp, stopWhatsApp, isWaReady } from './whatsapp.js'
+import { startDashboard, stopDashboard } from './dashboard.js'
 
 const BANNER = `
 ┓ ┏      ┓ ┃┓    ┏┓┏┓
@@ -92,15 +93,20 @@ async function main(): Promise<void> {
     logger.info('wa not configured — run `npx tsx scripts/setup-whatsapp.ts` to pair')
   }
 
+  startDashboard()
+
   registerKillHandler(async () => {
     stopScheduler()
     stopWhatsApp()
+    stopDashboard()
     await bot.stop()
   })
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'shutting down')
     stopScheduler()
+    stopWhatsApp()
+    stopDashboard()
     try {
       await bot.stop()
     } catch (err) {

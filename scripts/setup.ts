@@ -121,6 +121,11 @@ async function main(): Promise<void> {
     if (Number.isFinite(n) && n > 0) existing.IDLE_LOCK_MINUTES = String(n)
   }
 
+  if (!existing.DASHBOARD_TOKEN) {
+    existing.DASHBOARD_TOKEN = randomBytes(24).toString('base64url')
+    console.log(`generated DASHBOARD_TOKEN: ${existing.DASHBOARD_TOKEN}`)
+  }
+
   writeFileSync(envPath, serializeEnv(existing), { mode: 0o600 })
   chmodSync(envPath, 0o600)
   console.log('')
@@ -128,6 +133,7 @@ async function main(): Promise<void> {
   console.log(
     `   PIN_HASH=${existing.PIN_HASH ? 'set' : 'unset'} · KILL_PHRASE=${existing.KILL_PHRASE ? 'set' : 'unset'} · IDLE_LOCK_MINUTES=${existing.IDLE_LOCK_MINUTES ?? '30'}`
   )
+  console.log(`   Dashboard: http://localhost:3141/?token=${existing.DASHBOARD_TOKEN}`)
 }
 
 main().catch(err => {
