@@ -213,9 +213,13 @@ function applySchema(db: DatabaseSync): void {
       internal_date INTEGER,
       labels TEXT,
       unread INTEGER NOT NULL DEFAULT 1,
+      importance INTEGER,
+      importance_reason TEXT,
+      classified_at INTEGER,
       created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
     );
     CREATE INDEX IF NOT EXISTS idx_gmail_internal_date ON gmail_items(internal_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_gmail_importance ON gmail_items(importance DESC, internal_date DESC);
 
     CREATE TABLE IF NOT EXISTS calendar_events (
       id TEXT PRIMARY KEY,
@@ -253,6 +257,20 @@ function applySchema(db: DatabaseSync): void {
       created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
     );
   `)
+
+  // Inline column migrations for pre-existing DBs. Adding columns is safe
+  // because SQLite appends; data stays intact.
+  const gmailCols = (
+    db.prepare(`PRAGMA table_info(gmail_items)`).all() as Array<{ name: string }>
+  ).map(r => r.name)
+  if (!gmailCols.includes('importance')) db.exec(`ALTER TABLE gmail_items ADD COLUMN importance INTEGER`)
+  if (!gmailCols.includes('importance_reason'))
+    db.exec(`ALTER TABLE gmail_items ADD COLUMN importance_reason TEXT`)
+  if (!gmailCols.includes('classified_at'))
+    db.exec(`ALTER TABLE gmail_items ADD COLUMN classified_at INTEGER`)
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_gmail_importance ON gmail_items(importance DESC, internal_date DESC)`
+  )
 }
 
 export function getMirrorState(sourcePath: string): { mtime: number; vault_path: string } | null {
@@ -706,6 +724,9 @@ export type GmailItemRow = {
   internal_date: number | null
   labels: string | null
   unread: number
+  importance: number | null
+  importance_reason: string | null
+  classified_at: number | null
   created_at: number
 }
 
@@ -743,10 +764,42 @@ export function upsertGmailItem(item: {
 export function listGmailSince(sinceMs: number, limit = 20): GmailItemRow[] {
   return getDb()
     .prepare(
-      `SELECT id, thread_id, sender, subject, snippet, internal_date, labels, unread, created_at
+      `SELECT id, thread_id, sender, subject, snippet, internal_date, labels, unread,
+              importance, importance_reason, classified_at, created_at
        FROM gmail_items WHERE internal_date >= ? ORDER BY internal_date DESC LIMIT ?`
     )
     .all(sinceMs, limit) as GmailItemRow[]
+}
+
+export function listGmailUnclassified(limit = 25): GmailItemRow[] {
+  return getDb()
+    .prepare(
+      `SELECT id, thread_id, sender, subject, snippet, internal_date, labels, unread,
+              importance, importance_reason, classified_at, created_at
+       FROM gmail_items WHERE importance IS NULL
+       ORDER BY internal_date DESC LIMIT ?`
+    )
+    .all(limit) as GmailItemRow[]
+}
+
+export function topGmailByImportance(sinceMs: number, limit = 10): GmailItemRow[] {
+  return getDb()
+    .prepare(
+      `SELECT id, thread_id, sender, subject, snippet, internal_date, labels, unread,
+              importance, importance_reason, classified_at, created_at
+       FROM gmail_items
+       WHERE internal_date >= ? AND importance IS NOT NULL
+       ORDER BY importance DESC, internal_date DESC LIMIT ?`
+    )
+    .all(sinceMs, limit) as GmailItemRow[]
+}
+
+export function markGmailImportance(id: string, importance: number, reason: string): void {
+  getDb()
+    .prepare(
+      `UPDATE gmail_items SET importance = ?, importance_reason = ?, classified_at = strftime('%s','now') * 1000 WHERE id = ?`
+    )
+    .run(Math.max(0, Math.min(100, Math.round(importance))), reason.slice(0, 240), id)
 }
 
 // Calendar -------------------------------------------------------------

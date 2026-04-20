@@ -1,9 +1,11 @@
 import { google } from 'googleapis'
-import { listGmailSince, upsertGmailItem, type GmailItemRow } from './db.js'
+import { listGmailSince, topGmailByImportance, upsertGmailItem, type GmailItemRow } from './db.js'
 import { getAuthedClient, googleAuthConfigured, googleTokenSaved } from './google-auth.js'
 import { logger } from './logger.js'
 
-const PRIORITY_LABEL = process.env.GMAIL_PRIORITY_LABEL ?? 'howl-priority'
+const MAX_FETCH = Number.parseInt(process.env.GMAIL_MAX_FETCH ?? '50', 10)
+const LOOKBACK_HOURS = Number.parseInt(process.env.GMAIL_LOOKBACK_HOURS ?? '24', 10)
+const DEFAULT_QUERY = process.env.GMAIL_QUERY?.trim() || undefined
 
 export type PollResult = {
   ok: boolean
@@ -23,7 +25,7 @@ function headerValue(headers: Array<{ name?: string | null; value?: string | nul
   return undefined
 }
 
-export async function pollPriorityInbox(lookbackHours = 24): Promise<PollResult> {
+export async function pollInbox(lookbackHours = LOOKBACK_HOURS): Promise<PollResult> {
   if (!(await isGmailReady())) {
     return { ok: false, reason: 'not configured', fetched: 0, stored: 0 }
   }
@@ -31,10 +33,12 @@ export async function pollPriorityInbox(lookbackHours = 24): Promise<PollResult>
   const gmail = google.gmail({ version: 'v1', auth })
 
   const afterSec = Math.floor((Date.now() - lookbackHours * 3600_000) / 1000)
-  const q = `label:${PRIORITY_LABEL} after:${afterSec}`
+  const q = DEFAULT_QUERY
+    ? `${DEFAULT_QUERY} after:${afterSec}`
+    : `in:inbox after:${afterSec}`
   let listRes
   try {
-    listRes = await gmail.users.messages.list({ userId: 'me', q, maxResults: 30 })
+    listRes = await gmail.users.messages.list({ userId: 'me', q, maxResults: MAX_FETCH })
   } catch (err) {
     logger.error({ err: err instanceof Error ? err.message : err }, 'gmail list failed')
     return { ok: false, reason: 'list failed', fetched: 0, stored: 0 }
@@ -64,6 +68,16 @@ export async function pollPriorityInbox(lookbackHours = 24): Promise<PollResult>
   return { ok: true, fetched: msgs.length, stored }
 }
 
+/**
+ * Backwards-compat alias. Older callers used pollPriorityInbox when we filtered by
+ * a `howl-priority` label — the new pipeline ingests everything and ranks via LLM.
+ */
+export const pollPriorityInbox = pollInbox
+
 export function gmailSince(sinceMs: number, limit = 10): GmailItemRow[] {
   return listGmailSince(sinceMs, limit)
+}
+
+export function gmailTopByImportance(sinceMs: number, limit = 8): GmailItemRow[] {
+  return topGmailByImportance(sinceMs, limit)
 }

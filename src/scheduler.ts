@@ -37,6 +37,7 @@ const BUILT_INS: BuiltIn[] = [
   { name: 'vault-reindex', mission: 'vault-reindex', schedule: '*/10 * * * *', priority: 1 },
   { name: 'weekly-review', mission: 'weekly-review', schedule: '0 18 * * 0', priority: 5 },
   { name: 'gmail-poll', mission: 'gmail-poll', schedule: '*/5 * * * *', priority: 2 },
+  { name: 'gmail-classify', mission: 'gmail-classify', schedule: '*/7 * * * *', priority: 3 },
   { name: 'calendar-poll', mission: 'calendar-poll', schedule: '*/15 * * * *', priority: 2 },
 ]
 

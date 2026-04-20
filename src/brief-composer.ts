@@ -8,7 +8,7 @@ import {
 } from './vault.js'
 import { listVaultNotes } from './memory-graph.js'
 import { calendarBetween } from './calendar.js'
-import { gmailSince } from './gmail.js'
+import { gmailSince, gmailTopByImportance } from './gmail.js'
 import {
   googleAuthConfigured,
   googleTokenSaved,
@@ -70,19 +70,22 @@ export async function composeMorningBrief(): Promise<BriefSummary> {
     calendarLines = ['<i>not configured — run `npx tsx scripts/setup-google.ts`</i>']
   }
 
-  // Gmail
+  // Gmail — ranked by LLM-scored importance, not user labels.
   let gmailLines: string[]
   if (googleAuthConfigured() && googleTokenSaved()) {
-    const items = gmailSince(lastDay, 8)
+    const ranked = gmailTopByImportance(lastDay, 8)
+    const items = ranked.length > 0 ? ranked : gmailSince(lastDay, 8)
     gmailLines = items.length === 0
-      ? ['<i>no priority-labeled mail in last 24h</i>']
+      ? ['<i>no inbox activity in last 24h</i>']
       : items.map(m => {
           const sender = escapeHtml((m.sender ?? '').split('<')[0]?.trim() || 'unknown')
           const subj = escapeHtml(m.subject ?? '(no subject)')
-          return `• <b>${sender}</b> — ${subj}`
+          const score = m.importance !== null && m.importance !== undefined ? ` · <i>${m.importance}</i>` : ''
+          const why = m.importance_reason ? ` <span class="muted">${escapeHtml(m.importance_reason)}</span>` : ''
+          return `• <b>${sender}</b> — ${subj}${score}${why}`
         })
   } else {
-    gmailLines = ['<i>not configured — run `npx tsx scripts/setup-google.ts`</i>']
+    gmailLines = ['<i>not configured — run `npm run setup:google`</i>']
   }
 
   // WhatsApp
