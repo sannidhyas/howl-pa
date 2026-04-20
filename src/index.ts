@@ -15,6 +15,7 @@ import { registerKillHandler } from './security.js'
 import { initScheduler, stopScheduler } from './scheduler.js'
 import { startWhatsApp, stopWhatsApp, isWaReady } from './whatsapp.js'
 import { startDashboard, stopDashboard } from './dashboard.js'
+import { ensureHiveMindSchema } from './orchestrator.js'
 
 const BANNER = `
 ┓ ┏      ┓ ┃┓    ┏┓┏┓
@@ -56,6 +57,7 @@ async function main(): Promise<void> {
 
   acquireLock()
   initDatabase()
+  ensureHiveMindSchema()
 
   if (!SECURITY_ENABLED) {
     logger.warn('security not configured — run `npm run setup` to set PIN + kill phrase')

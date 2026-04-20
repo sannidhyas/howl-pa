@@ -11,6 +11,9 @@
     "build": "tsc -p .",
     "dev": "tsx watch src/index.ts",
     "setup": "tsx scripts/setup.ts",
+    "howl": "tsx scripts/howl.ts",
+    "setup:google": "tsx scripts/setup-google.ts",
+    "setup:wa": "tsx scripts/setup-whatsapp.ts",
     "typecheck": "tsc -p . --noEmit"
   },
   "dependencies": {

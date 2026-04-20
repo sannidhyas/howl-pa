@@ -29,6 +29,7 @@ import {
   availableBackends,
   dispatchSubagent,
 } from './subagent/router.js'
+import { parseDelegation, routeDelegation } from './orchestrator.js'
 import { reindexVault } from './vault-indexer.js'
 import { mirrorThesis } from './thesis-mirror.js'
 import { routeCapture, type CaptureType } from './capture-router.js'
@@ -473,6 +474,22 @@ async function processMessage(ctx: Context, text: string): Promise<void> {
   const inboundHits = scanForSecrets(text)
   if (inboundHits.length > 0) {
     audit('exfil_redacted', `inbound hits=${inboundHits.map(h => h.type).join(',')}`, { chatId })
+  }
+
+  // @agent: delegation syntax — routes through orchestrator.
+  const delegation = parseDelegation(text)
+  if (delegation) {
+    await ctx.replyWithChatAction('typing').catch(() => {})
+    try {
+      const outcome = await routeDelegation(delegation, chatId)
+      const redacted = redactSecrets(outcome.text)
+      const header = `<b>@${escapeHtml(delegation.agentId)}</b> · <i>${outcome.backend ?? '—'} · ${(outcome.durationMs / 1000).toFixed(1)}s</i>`
+      await sendHtml(ctx, `${header}\n\n${escapeHtml(redacted.text)}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      await ctx.reply(`⚠️ delegation error: ${msg.slice(0, 400)}`).catch(() => {})
+    }
+    return
   }
 
   await ctx.replyWithChatAction('typing').catch(() => {})
