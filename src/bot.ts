@@ -13,8 +13,14 @@ import {
 import { redactSecrets, scanForSecrets } from './exfiltration-guard.js'
 import { runAgentWithRetry } from './agent.js'
 import { audit, latestSessionFor } from './db.js'
-import { formatHitsForTelegram, recall } from './memory.js'
+import { recall } from './memory.js'
 import { reindexVault } from './vault-indexer.js'
+import { mirrorThesis } from './thesis-mirror.js'
+import {
+  formatMirrorResultHtml,
+  formatRecallHtml,
+  formatReindexResultHtml,
+} from './format-telegram.js'
 
 const MAX_TELEGRAM_TEXT = 4096
 
@@ -129,21 +135,37 @@ async function handleCommand(ctx: Context, text: string): Promise<boolean> {
         return true
       }
       const hits = await recall(query, { chatId, k: 5 })
-      for (const chunk of splitMessage(formatHitsForTelegram(hits))) {
-        await ctx.reply(chunk).catch(() => {})
-      }
+      await sendHtml(ctx, formatRecallHtml(hits, query))
       return true
     }
     case '/reindex': {
       await ctx.reply('reindexing vault…')
       const result = await reindexVault()
-      await ctx.reply(
-        `done. scanned=${result.scanned} reindexed=${result.reindexed} chunks=${result.chunksStored} skipped=${result.skipped} errors=${result.errored}`
-      )
+      await sendHtml(ctx, formatReindexResultHtml(result))
+      return true
+    }
+    case '/mirror-thesis': {
+      const force = parts.includes('--force')
+      await ctx.reply(`mirroring thesis${force ? ' (force)' : ''}…`)
+      const result = await mirrorThesis({ force })
+      await sendHtml(ctx, formatMirrorResultHtml(result))
       return true
     }
     default:
       return false
+  }
+}
+
+// Send a message as Telegram HTML; fall back to plain text if Telegram rejects.
+async function sendHtml(ctx: Context, html: string): Promise<void> {
+  for (const chunk of splitMessage(html, 4000)) {
+    try {
+      await ctx.reply(chunk, { parse_mode: 'HTML', link_preview_options: { is_disabled: true } })
+    } catch (err) {
+      logger.warn({ err: err instanceof Error ? err.message : err }, 'HTML reply failed; falling back to plain')
+      const plain = chunk.replace(/<[^>]+>/g, '')
+      await ctx.reply(plain).catch(() => {})
+    }
   }
 }
 
@@ -176,8 +198,16 @@ async function processMessage(ctx: Context, text: string): Promise<void> {
   touchActivity()
 
   if (await handleKillPhraseCheck(ctx, text)) return
-  if (await handleCommand(ctx, text)) {
-    audit('command', text.split(/\s+/)[0] ?? '', { chatId })
+  try {
+    if (await handleCommand(ctx, text)) {
+      audit('command', text.split(/\s+/)[0] ?? '', { chatId })
+      return
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    logger.error({ err, chatId, cmd: text.split(/\s+/)[0] }, 'command handler threw')
+    await ctx.reply(`⚠️ command error: ${msg.slice(0, 400)}`).catch(() => {})
+    audit('command', `error: ${msg.slice(0, 200)}`, { chatId, blocked: true })
     return
   }
   if (await handlePinAttempt(ctx, text)) return

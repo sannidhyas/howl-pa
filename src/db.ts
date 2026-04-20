@@ -160,7 +160,45 @@ function applySchema(db: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS idx_sar_backend ON subagent_runs(backend, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_sar_mode ON subagent_runs(mode, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mirror_state (
+      source_path TEXT PRIMARY KEY,
+      mtime INTEGER NOT NULL,
+      vault_path TEXT NOT NULL,
+      kind TEXT,
+      summary_model TEXT,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+    );
   `)
+}
+
+export function getMirrorState(sourcePath: string): { mtime: number; vault_path: string } | null {
+  const row = getDb()
+    .prepare(`SELECT mtime, vault_path FROM mirror_state WHERE source_path = ?`)
+    .get(sourcePath) as { mtime: number; vault_path: string } | undefined
+  return row ?? null
+}
+
+export function upsertMirrorState(args: {
+  sourcePath: string
+  mtime: number
+  vaultPath: string
+  kind?: string
+  summaryModel?: string
+}): void {
+  getDb()
+    .prepare(
+      `INSERT INTO mirror_state (source_path, mtime, vault_path, kind, summary_model, updated_at)
+       VALUES (?, ?, ?, ?, ?, strftime('%s','now') * 1000)
+       ON CONFLICT(source_path) DO UPDATE SET
+         mtime=excluded.mtime,
+         vault_path=excluded.vault_path,
+         kind=excluded.kind,
+         summary_model=excluded.summary_model,
+         updated_at=strftime('%s','now') * 1000`
+    )
+    .run(args.sourcePath, args.mtime, args.vaultPath, args.kind ?? null, args.summaryModel ?? null)
 }
 
 // Session helpers ----------------------------------------------------------
