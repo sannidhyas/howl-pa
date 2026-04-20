@@ -126,6 +126,40 @@ function applySchema(db: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS idx_audit_chat ON audit_log(chat_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_audit_event ON audit_log(event_type, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS memory_chunks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_kind TEXT NOT NULL,
+      source_ref TEXT NOT NULL,
+      chunk_idx INTEGER NOT NULL DEFAULT 0,
+      chunk TEXT NOT NULL,
+      embedding BLOB NOT NULL,
+      mtime INTEGER,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+      UNIQUE(source_kind, source_ref, chunk_idx)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mc_source ON memory_chunks(source_kind, source_ref);
+    CREATE INDEX IF NOT EXISTS idx_mc_mtime ON memory_chunks(source_kind, mtime);
+
+    CREATE TABLE IF NOT EXISTS subagent_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id TEXT,
+      mode TEXT NOT NULL,
+      backend TEXT NOT NULL,
+      judge TEXT,
+      hints TEXT,
+      prompt_preview TEXT,
+      duration_ms INTEGER,
+      input_tokens INTEGER,
+      output_tokens INTEGER,
+      cost_usd REAL,
+      outcome TEXT,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sar_backend ON subagent_runs(backend, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_sar_mode ON subagent_runs(mode, created_at DESC);
   `)
 }
 
@@ -255,4 +289,105 @@ export function closeDatabase(): void {
     db.close()
     db = null
   }
+}
+
+// Memory chunks (vector store) -------------------------------------------
+
+export type MemorySourceKind = 'vault' | 'convo' | 'idea' | 'fragment'
+
+export type MemoryChunkRow = {
+  id: number
+  source_kind: MemorySourceKind
+  source_ref: string
+  chunk_idx: number
+  chunk: string
+  embedding: Uint8Array
+  mtime: number | null
+  created_at: number
+}
+
+export function upsertMemoryChunk(args: {
+  sourceKind: MemorySourceKind
+  sourceRef: string
+  chunkIdx: number
+  chunk: string
+  embedding: Uint8Array
+  mtime?: number
+}): void {
+  getDb()
+    .prepare(
+      `INSERT INTO memory_chunks (source_kind, source_ref, chunk_idx, chunk, embedding, mtime)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(source_kind, source_ref, chunk_idx) DO UPDATE SET
+         chunk=excluded.chunk, embedding=excluded.embedding, mtime=excluded.mtime`
+    )
+    .run(
+      args.sourceKind,
+      args.sourceRef,
+      args.chunkIdx,
+      args.chunk,
+      args.embedding,
+      args.mtime ?? null
+    )
+}
+
+export function memoryChunkMtime(kind: MemorySourceKind, ref: string): number | null {
+  const row = getDb()
+    .prepare(`SELECT MAX(mtime) AS mtime FROM memory_chunks WHERE source_kind = ? AND source_ref = ?`)
+    .get(kind, ref) as { mtime: number | null } | undefined
+  return row?.mtime ?? null
+}
+
+export function deleteMemoryChunksFor(kind: MemorySourceKind, ref: string): void {
+  getDb().prepare(`DELETE FROM memory_chunks WHERE source_kind = ? AND source_ref = ?`).run(kind, ref)
+}
+
+export function allMemoryChunks(kind?: MemorySourceKind): MemoryChunkRow[] {
+  const stmt = kind
+    ? getDb().prepare(
+        `SELECT id, source_kind, source_ref, chunk_idx, chunk, embedding, mtime, created_at
+         FROM memory_chunks WHERE source_kind = ?`
+      )
+    : getDb().prepare(
+        `SELECT id, source_kind, source_ref, chunk_idx, chunk, embedding, mtime, created_at
+         FROM memory_chunks`
+      )
+  return (kind ? stmt.all(kind) : stmt.all()) as MemoryChunkRow[]
+}
+
+// Subagent telemetry ------------------------------------------------------
+
+export type SubagentRunEntry = {
+  chatId?: string
+  mode: 'single' | 'council'
+  backend: string
+  judge?: string
+  hints?: string
+  promptPreview?: string
+  durationMs?: number
+  inputTokens?: number
+  outputTokens?: number
+  costUsd?: number
+  outcome: 'ok' | 'error' | 'timeout' | 'partial'
+}
+
+export function recordSubagentRun(entry: SubagentRunEntry): void {
+  getDb()
+    .prepare(
+      `INSERT INTO subagent_runs (chat_id, mode, backend, judge, hints, prompt_preview, duration_ms, input_tokens, output_tokens, cost_usd, outcome)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      entry.chatId ?? null,
+      entry.mode,
+      entry.backend,
+      entry.judge ?? null,
+      entry.hints ?? null,
+      entry.promptPreview ?? null,
+      entry.durationMs ?? null,
+      entry.inputTokens ?? null,
+      entry.outputTokens ?? null,
+      entry.costUsd ?? null,
+      entry.outcome
+    )
 }

@@ -13,6 +13,8 @@ import {
 import { redactSecrets, scanForSecrets } from './exfiltration-guard.js'
 import { runAgentWithRetry } from './agent.js'
 import { audit, latestSessionFor } from './db.js'
+import { formatHitsForTelegram, recall } from './memory.js'
+import { reindexVault } from './vault-indexer.js'
 
 const MAX_TELEGRAM_TEXT = 4096
 
@@ -120,6 +122,26 @@ async function handleCommand(ctx: Context, text: string): Promise<boolean> {
       lock('user_requested', chatId)
       await ctx.reply('locked.')
       return true
+    case '/recall': {
+      const query = parts.slice(1).join(' ').trim()
+      if (!query) {
+        await ctx.reply('usage: /recall <query>')
+        return true
+      }
+      const hits = await recall(query, { chatId, k: 5 })
+      for (const chunk of splitMessage(formatHitsForTelegram(hits))) {
+        await ctx.reply(chunk).catch(() => {})
+      }
+      return true
+    }
+    case '/reindex': {
+      await ctx.reply('reindexing vault…')
+      const result = await reindexVault()
+      await ctx.reply(
+        `done. scanned=${result.scanned} reindexed=${result.reindexed} chunks=${result.chunksStored} skipped=${result.skipped} errors=${result.errored}`
+      )
+      return true
+    }
     default:
       return false
   }
