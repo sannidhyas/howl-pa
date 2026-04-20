@@ -170,6 +170,39 @@ function applySchema(db: DatabaseSync): void {
       created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
       updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
     );
+
+    CREATE TABLE IF NOT EXISTS scheduled_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      mission TEXT NOT NULL,
+      schedule TEXT NOT NULL,
+      next_run INTEGER NOT NULL,
+      last_run INTEGER,
+      last_result TEXT,
+      priority INTEGER NOT NULL DEFAULT 0,
+      agent_id TEXT NOT NULL DEFAULT 'main',
+      status TEXT NOT NULL DEFAULT 'active',
+      args TEXT,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sched_status_next ON scheduled_tasks(status, priority, next_run);
+
+    CREATE TABLE IF NOT EXISTS mission_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      prompt TEXT,
+      mission TEXT,
+      assigned_agent TEXT NOT NULL DEFAULT 'main',
+      priority INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'queued',
+      result TEXT,
+      started_at INTEGER,
+      completed_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mission_status ON mission_tasks(status, priority, created_at);
   `)
 }
 
@@ -428,4 +461,187 @@ export function recordSubagentRun(entry: SubagentRunEntry): void {
       entry.costUsd ?? null,
       entry.outcome
     )
+}
+
+// Scheduled tasks --------------------------------------------------------
+
+export type ScheduledTaskStatus = 'active' | 'paused' | 'running' | 'stuck' | 'disabled'
+
+export type ScheduledTaskRow = {
+  id: number
+  name: string
+  mission: string
+  schedule: string
+  next_run: number
+  last_run: number | null
+  last_result: string | null
+  priority: number
+  agent_id: string
+  status: ScheduledTaskStatus
+  args: string | null
+  created_at: number
+}
+
+export function upsertScheduledTask(args: {
+  name: string
+  mission: string
+  schedule: string
+  nextRun: number
+  priority?: number
+  agentId?: string
+  status?: ScheduledTaskStatus
+  args?: string
+}): void {
+  getDb()
+    .prepare(
+      `INSERT INTO scheduled_tasks (name, mission, schedule, next_run, priority, agent_id, status, args)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(name) DO UPDATE SET
+         mission=excluded.mission,
+         schedule=excluded.schedule,
+         next_run=excluded.next_run,
+         priority=excluded.priority,
+         agent_id=excluded.agent_id,
+         args=excluded.args`
+    )
+    .run(
+      args.name,
+      args.mission,
+      args.schedule,
+      args.nextRun,
+      args.priority ?? 0,
+      args.agentId ?? 'main',
+      args.status ?? 'active',
+      args.args ?? null
+    )
+}
+
+export function listScheduledTasks(): ScheduledTaskRow[] {
+  return getDb()
+    .prepare(
+      `SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, agent_id, status, args, created_at
+       FROM scheduled_tasks ORDER BY next_run`
+    )
+    .all() as ScheduledTaskRow[]
+}
+
+export function dueScheduledTasks(now = Date.now()): ScheduledTaskRow[] {
+  return getDb()
+    .prepare(
+      `SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, agent_id, status, args, created_at
+       FROM scheduled_tasks
+       WHERE status = 'active' AND next_run <= ?
+       ORDER BY priority DESC, next_run`
+    )
+    .all(now) as ScheduledTaskRow[]
+}
+
+export function markTaskRunning(id: number): void {
+  getDb()
+    .prepare(`UPDATE scheduled_tasks SET status='running' WHERE id = ?`)
+    .run(id)
+}
+
+export function markTaskRan(args: {
+  id: number
+  nextRun: number
+  lastResult: string
+  status?: ScheduledTaskStatus
+}): void {
+  getDb()
+    .prepare(
+      `UPDATE scheduled_tasks SET last_run = strftime('%s','now') * 1000, last_result = ?, next_run = ?, status = ? WHERE id = ?`
+    )
+    .run(args.lastResult, args.nextRun, args.status ?? 'active', args.id)
+}
+
+export function setTaskStatus(name: string, status: ScheduledTaskStatus): boolean {
+  const info = getDb().prepare(`UPDATE scheduled_tasks SET status = ? WHERE name = ?`).run(status, name)
+  return info.changes > 0
+}
+
+export function deleteScheduledTask(name: string): boolean {
+  const info = getDb().prepare(`DELETE FROM scheduled_tasks WHERE name = ?`).run(name)
+  return info.changes > 0
+}
+
+export function recoverStuckTasks(timeoutMs: number): number {
+  const info = getDb()
+    .prepare(
+      `UPDATE scheduled_tasks SET status='stuck' WHERE status='running' AND last_run IS NOT NULL AND last_run < ?`
+    )
+    .run(Date.now() - timeoutMs)
+  return Number(info.changes)
+}
+
+// Mission tasks (queue) --------------------------------------------------
+
+export type MissionTaskStatus = 'queued' | 'running' | 'done' | 'failed'
+
+export type MissionTaskRow = {
+  id: number
+  title: string
+  prompt: string | null
+  mission: string | null
+  assigned_agent: string
+  priority: number
+  status: MissionTaskStatus
+  result: string | null
+  started_at: number | null
+  completed_at: number | null
+  created_at: number
+}
+
+export function enqueueMission(args: {
+  title: string
+  prompt?: string
+  mission?: string
+  assignedAgent?: string
+  priority?: number
+}): number {
+  const info = getDb()
+    .prepare(
+      `INSERT INTO mission_tasks (title, prompt, mission, assigned_agent, priority)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .run(
+      args.title,
+      args.prompt ?? null,
+      args.mission ?? null,
+      args.assignedAgent ?? 'main',
+      args.priority ?? 0
+    )
+  return Number(info.lastInsertRowid)
+}
+
+export function listMissionTasks(status?: MissionTaskStatus, limit = 20): MissionTaskRow[] {
+  if (status) {
+    return getDb()
+      .prepare(
+        `SELECT id, title, prompt, mission, assigned_agent, priority, status, result, started_at, completed_at, created_at
+         FROM mission_tasks WHERE status = ? ORDER BY priority DESC, created_at LIMIT ?`
+      )
+      .all(status, limit) as MissionTaskRow[]
+  }
+  return getDb()
+    .prepare(
+      `SELECT id, title, prompt, mission, assigned_agent, priority, status, result, started_at, completed_at, created_at
+       FROM mission_tasks ORDER BY priority DESC, created_at DESC LIMIT ?`
+    )
+    .all(limit) as MissionTaskRow[]
+}
+
+export function updateMissionTaskStatus(
+  id: number,
+  status: MissionTaskStatus,
+  result?: string
+): void {
+  getDb()
+    .prepare(
+      `UPDATE mission_tasks SET status = ?, result = COALESCE(?, result),
+         started_at = CASE WHEN ? = 'running' AND started_at IS NULL THEN strftime('%s','now')*1000 ELSE started_at END,
+         completed_at = CASE WHEN ? IN ('done','failed') THEN strftime('%s','now')*1000 ELSE completed_at END
+       WHERE id = ?`
+    )
+    .run(status, result ?? null, status, status, id)
 }

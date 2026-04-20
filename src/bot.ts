@@ -12,7 +12,14 @@ import {
 } from './security.js'
 import { redactSecrets, scanForSecrets } from './exfiltration-guard.js'
 import { runAgentWithRetry } from './agent.js'
-import { audit, latestSessionFor } from './db.js'
+import {
+  audit,
+  deleteScheduledTask,
+  latestSessionFor,
+  listMissionTasks,
+  setTaskStatus,
+} from './db.js'
+import { runMissionByName, scheduledTaskSummary } from './scheduler.js'
 import { recall } from './memory.js'
 import { reindexVault } from './vault-indexer.js'
 import { mirrorThesis } from './thesis-mirror.js'
@@ -182,6 +189,70 @@ async function handleCommand(ctx: Context, text: string): Promise<boolean> {
         return true
       }
       await sendHtml(ctx, formatNudgeHtml(computeNudges(flags)))
+      return true
+    }
+    case '/schedule': {
+      const sub = parts[1]?.toLowerCase()
+      if (!sub || sub === 'list') {
+        const rows = scheduledTaskSummary()
+        await sendHtml(
+          ctx,
+          `<b>Scheduled tasks</b>\n${rows.map(r => `<code>${escapeHtml(r)}</code>`).join('\n') || '<i>none</i>'}`
+        )
+        return true
+      }
+      if (sub === 'pause' && parts[2]) {
+        const ok = setTaskStatus(parts[2], 'paused')
+        await ctx.reply(ok ? `paused ${parts[2]}` : `not found: ${parts[2]}`)
+        return true
+      }
+      if (sub === 'resume' && parts[2]) {
+        const ok = setTaskStatus(parts[2], 'active')
+        await ctx.reply(ok ? `resumed ${parts[2]}` : `not found: ${parts[2]}`)
+        return true
+      }
+      if (sub === 'delete' && parts[2]) {
+        const ok = deleteScheduledTask(parts[2])
+        await ctx.reply(ok ? `deleted ${parts[2]}` : `not found: ${parts[2]}`)
+        return true
+      }
+      await ctx.reply('usage: /schedule list | pause <name> | resume <name> | delete <name>')
+      return true
+    }
+    case '/mission': {
+      const sub = parts[1]?.toLowerCase()
+      if (sub === 'run' && parts[2]) {
+        await ctx.reply(`running mission ${parts[2]}…`)
+        try {
+          const summary = await runMissionByName(parts[2])
+          await sendHtml(ctx, `<b>${escapeHtml(parts[2])}</b> · ${escapeHtml(summary)}`)
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          await ctx.reply(`⚠️ mission error: ${msg.slice(0, 400)}`)
+        }
+        return true
+      }
+      if (!sub || sub === 'list') {
+        const rows = listMissionTasks(undefined, 10)
+        const lines = rows.length === 0
+          ? '<i>no missions in queue</i>'
+          : rows
+              .map(r => `<code>${escapeHtml(`${r.id}·${r.status}·${r.assigned_agent}·${r.title}`)}</code>`)
+              .join('\n')
+        await sendHtml(ctx, `<b>Mission queue</b>\n${lines}`)
+        return true
+      }
+      await ctx.reply('usage: /mission list | run <name>')
+      return true
+    }
+    case '/brief': {
+      await ctx.reply('composing brief…')
+      try {
+        const summary = await runMissionByName('morning-brief')
+        logger.info({ summary }, 'manual brief run')
+      } catch (err) {
+        await ctx.reply(`⚠️ brief error: ${err instanceof Error ? err.message : String(err)}`)
+      }
       return true
     }
     default:

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import {
+  ALLOWED_CHAT_ID,
   IS_DEV,
   LOCK_PATH,
   PROJECT_ROOT,
@@ -11,6 +12,7 @@ import { logger } from './logger.js'
 import { createBot } from './bot.js'
 import { closeDatabase, initDatabase } from './db.js'
 import { registerKillHandler } from './security.js'
+import { initScheduler, stopScheduler } from './scheduler.js'
 
 const BANNER = `
 ┓ ┏      ┓ ┃┓    ┏┓┏┓
@@ -59,12 +61,34 @@ async function main(): Promise<void> {
 
   const bot = createBot()
 
+  const send = async (html: string): Promise<void> => {
+    const targetChatId = Number.parseInt(String(ALLOWED_CHAT_ID), 10)
+    if (!Number.isFinite(targetChatId)) {
+      logger.warn({ ALLOWED_CHAT_ID }, 'invalid ALLOWED_CHAT_ID — cannot send scheduled message')
+      return
+    }
+    try {
+      await bot.api.sendMessage(targetChatId, html, {
+        parse_mode: 'HTML',
+        link_preview_options: { is_disabled: true },
+      })
+    } catch (err) {
+      logger.warn({ err: err instanceof Error ? err.message : err }, 'scheduler send (HTML) failed; retrying plain')
+      const plain = html.replace(/<[^>]+>/g, '')
+      await bot.api.sendMessage(targetChatId, plain).catch(() => {})
+    }
+  }
+
+  initScheduler({ send, defaultChatId: String(ALLOWED_CHAT_ID) })
+
   registerKillHandler(async () => {
+    stopScheduler()
     await bot.stop()
   })
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'shutting down')
+    stopScheduler()
     try {
       await bot.stop()
     } catch (err) {
