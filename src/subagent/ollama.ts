@@ -31,6 +31,10 @@ export class OllamaBackend implements SubagentBackend {
           model: this.model,
           messages: [{ role: 'user', content: input.prompt }],
           stream: false,
+          // Force full GPU offload; Ollama still falls back to CPU if the
+          // model genuinely doesn't fit. Prevents silent CPU spills on
+          // borderline-sized models.
+          options: { num_gpu: -1 },
         }),
       })
       if (!res.ok) {
