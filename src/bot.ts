@@ -16,7 +16,10 @@ import { audit, latestSessionFor } from './db.js'
 import { recall } from './memory.js'
 import { reindexVault } from './vault-indexer.js'
 import { mirrorThesis } from './thesis-mirror.js'
+import { routeCapture, type CaptureType } from './capture-router.js'
+import { computeNudges, formatNudgeHtml, todayFlags } from './evening-nudge.js'
 import {
+  escapeHtml,
   formatMirrorResultHtml,
   formatRecallHtml,
   formatReindexResultHtml,
@@ -151,8 +154,80 @@ async function handleCommand(ctx: Context, text: string): Promise<boolean> {
       await sendHtml(ctx, formatMirrorResultHtml(result))
       return true
     }
+    case '/capture': {
+      const body = text.replace(/^\/capture\s*/i, '').trim()
+      if (!body) {
+        await ctx.reply('usage: /capture <text>')
+        return true
+      }
+      await routeAndReply(ctx, body)
+      return true
+    }
+    case '/note':
+      return await forcedCapture(ctx, text, 'note', '/note <text>')
+    case '/idea':
+      return await forcedCapture(ctx, text, 'idea', '/idea <text>')
+    case '/task':
+      return await forcedCapture(ctx, text, 'task', '/task <text>')
+    case '/thesis':
+      return await forcedCapture(ctx, text, 'thesis_fragment', '/thesis <text>')
+    case '/literature':
+      return await forcedCapture(ctx, text, 'literature', '/literature <text>')
+    case '/journal':
+      return await forcedCapture(ctx, text, 'journal', '/journal <text>')
+    case '/nudge': {
+      const flags = await todayFlags()
+      if (!flags) {
+        await ctx.reply('could not load daily note.')
+        return true
+      }
+      await sendHtml(ctx, formatNudgeHtml(computeNudges(flags)))
+      return true
+    }
     default:
       return false
+  }
+}
+
+async function forcedCapture(
+  ctx: Context,
+  text: string,
+  type: CaptureType,
+  usage: string
+): Promise<boolean> {
+  const body = text.split(/\s+/).slice(1).join(' ').trim()
+  if (!body) {
+    await ctx.reply(`usage: ${usage}`)
+    return true
+  }
+  await routeAndReply(ctx, body, type)
+  return true
+}
+
+async function routeAndReply(ctx: Context, body: string, forcedType?: CaptureType): Promise<void> {
+  await ctx.reply(forcedType === 'idea' ? '💡 building rundown…' : '📥 capturing…')
+  try {
+    const outcome = await routeCapture(body, forcedType)
+    if (!outcome) {
+      await ctx.reply('capture failed: classifier returned nothing.')
+      return
+    }
+    if (outcome.type === 'ephemeral') {
+      await sendHtml(
+        ctx,
+        `<i>ephemeral — not written.</i> <code>${escapeHtml(outcome.classification.slug)}</code>`
+      )
+      return
+    }
+    await sendHtml(
+      ctx,
+      `<b>Captured</b> as <code>${escapeHtml(outcome.type)}</code> → <code>${escapeHtml(outcome.vaultRel)}</code>` +
+        (outcome.classification.title ? `\n<i>${escapeHtml(outcome.classification.title)}</i>` : '')
+    )
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    logger.error({ err }, 'capture route failed')
+    await ctx.reply(`⚠️ capture error: ${msg.slice(0, 400)}`).catch(() => {})
   }
 }
 
