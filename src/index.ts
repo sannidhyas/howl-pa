@@ -16,6 +16,7 @@ import { initScheduler, stopScheduler } from './scheduler.js'
 import { startWhatsApp, stopWhatsApp, isWaReady } from './whatsapp.js'
 import { startDashboard, stopDashboard } from './dashboard.js'
 import { ensureHiveMindSchema } from './orchestrator.js'
+import { startAllSpecialistBots, type AgentBotHandle } from './agent-bot.js'
 
 const BANNER = `
 ┓ ┏      ┓ ┃┓    ┏┓┏┓
@@ -97,10 +98,25 @@ async function main(): Promise<void> {
 
   startDashboard()
 
+  let specialists: AgentBotHandle[] = []
+  try {
+    specialists = await startAllSpecialistBots()
+    if (specialists.length > 0) {
+      logger.info({ count: specialists.length, agents: specialists.map(s => s.agentId) }, 'specialist bots started')
+    }
+  } catch (err) {
+    logger.warn({ err: err instanceof Error ? err.message : err }, 'specialist bot bootstrap failed')
+  }
+
+  const stopSpecialists = async (): Promise<void> => {
+    await Promise.allSettled(specialists.map(s => s.stop()))
+  }
+
   registerKillHandler(async () => {
     stopScheduler()
     stopWhatsApp()
     stopDashboard()
+    await stopSpecialists()
     await bot.stop()
   })
 
@@ -109,6 +125,11 @@ async function main(): Promise<void> {
     stopScheduler()
     stopWhatsApp()
     stopDashboard()
+    try {
+      await stopSpecialists()
+    } catch (err) {
+      logger.warn({ err }, 'specialist stop failed')
+    }
     try {
       await bot.stop()
     } catch (err) {

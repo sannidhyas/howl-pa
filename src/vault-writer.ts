@@ -154,7 +154,9 @@ export type IdeaPayload = {
 
 export async function writeIdea(input: IdeaPayload): Promise<{ indexRel: string; seedRel: string }> {
   const date = todayIso()
-  const dir = vaultPath(VAULT_SUBDIRS.projects, 'ideas', `${date}-${input.slug}`)
+  // Parked ideas live in 08_Pipeline/ideas/. `/open <slug>` promotes them to
+  // 06_Projects/6N_Name/ using the next free numbered slot.
+  const dir = vaultPath(VAULT_SUBDIRS.pipeline, 'ideas', `${date}-${input.slug}`)
   await mkdir(dir, { recursive: true })
   const indexAbs = join(dir, 'index.md')
   const seedAbs = join(dir, 'seed.md')
@@ -164,8 +166,8 @@ export async function writeIdea(input: IdeaPayload): Promise<{ indexRel: string;
   const indexContent =
     serializeFrontmatter({
       created: date,
-      tags: ['idea', 'venture'],
-      status: 'captured',
+      tags: ['idea', 'venture', 'parked'],
+      status: 'parked',
       source: 'telegram',
     }) +
     `\n\n# ${input.title}\n\n## Raw capture\n\n${input.sourceText.trim()}\n\n${input.rundown.trim()}\n`

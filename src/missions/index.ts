@@ -6,6 +6,9 @@ import { weeklyReview } from './weekly-review.js'
 import { gmailPoll } from './gmail-poll.js'
 import { gmailClassify } from './gmail-classify.js'
 import { calendarPoll } from './calendar-poll.js'
+import { morningRitual } from './morning-ritual.js'
+import { eveningTracker } from './evening-tracker.js'
+import { ventureReview } from './venture-review.js'
 
 export const MISSIONS: Record<string, MissionFn> = {
   'vault-reindex': vaultReindex,
@@ -15,6 +18,9 @@ export const MISSIONS: Record<string, MissionFn> = {
   'gmail-poll': gmailPoll,
   'gmail-classify': gmailClassify,
   'calendar-poll': calendarPoll,
+  'morning-ritual': morningRitual,
+  'evening-tracker': eveningTracker,
+  'venture-review': ventureReview,
 }
 
 export type { MissionFn, MissionContext, MissionResult } from './types.js'

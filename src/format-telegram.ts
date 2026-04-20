@@ -61,12 +61,16 @@ export function formatRecallHtml(hits: RecallHit[], query: string): string {
 
 export function formatMirrorResultHtml(res: {
   scanned: number
-  mirrored: number
+  created?: number
+  updated?: number
+  mirrored?: number
   skipped: number
   errored: number
   errors: string[]
 }): string {
-  const head = `<b>Thesis mirror</b> · scanned <b>${res.scanned}</b> · mirrored <b>${res.mirrored}</b> · skipped ${res.skipped} · errors ${res.errored}`
+  const created = res.created ?? 0
+  const updated = res.updated ?? res.mirrored ?? 0
+  const head = `<b>Thesis mirror</b> · scanned <b>${res.scanned}</b> · created <b>${created}</b> · updated <b>${updated}</b> · skipped ${res.skipped} · errors ${res.errored}`
   if (res.errored === 0) return head
   const errs = res.errors
     .slice(0, 5)

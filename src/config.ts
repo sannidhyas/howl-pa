@@ -88,3 +88,19 @@ export const CLAUDE_HINTS = ['ui', 'ux', 'design', 'visual', 'layout', 'css', 'm
 export const SECURITY_ENABLED = PIN_HASH !== '' && PIN_SALT !== ''
 
 export const DEBUG_ACKNOWLEDGE = bool('DEBUG_ACKNOWLEDGE', false)
+
+// Multi-bot fanout — scans env for TELEGRAM_BOT_TOKEN_<AGENT_ID>=... pairs.
+// Agent IDs are lowercased during routing.
+export type AgentBotToken = { agentId: string; token: string }
+
+export function discoverAgentBotTokens(): AgentBotToken[] {
+  const out: AgentBotToken[] = []
+  const prefix = 'TELEGRAM_BOT_TOKEN_'
+  for (const [k, v] of Object.entries(raw)) {
+    if (!k.startsWith(prefix) || !v) continue
+    const id = k.slice(prefix.length).toLowerCase()
+    if (!/^[a-z0-9_-]{2,30}$/.test(id)) continue
+    out.push({ agentId: id, token: v })
+  }
+  return out
+}

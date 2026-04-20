@@ -33,9 +33,12 @@ type BuiltIn = {
 
 const BUILT_INS: BuiltIn[] = [
   { name: 'morning-brief', mission: 'morning-brief', schedule: '0 7 * * *', priority: 10 },
+  { name: 'morning-ritual', mission: 'morning-ritual', schedule: '5 7 * * *', priority: 9 },
   { name: 'evening-nudge', mission: 'evening-nudge', schedule: '0 21 * * *', priority: 8 },
+  { name: 'evening-tracker', mission: 'evening-tracker', schedule: '5 21 * * *', priority: 8 },
   { name: 'vault-reindex', mission: 'vault-reindex', schedule: '*/10 * * * *', priority: 1 },
   { name: 'weekly-review', mission: 'weekly-review', schedule: '0 18 * * 0', priority: 5 },
+  { name: 'venture-review', mission: 'venture-review', schedule: '30 18 * * 0', priority: 5 },
   { name: 'gmail-poll', mission: 'gmail-poll', schedule: '*/5 * * * *', priority: 2 },
   { name: 'gmail-classify', mission: 'gmail-classify', schedule: '*/7 * * * *', priority: 3 },
   { name: 'calendar-poll', mission: 'calendar-poll', schedule: '*/15 * * * *', priority: 2 },

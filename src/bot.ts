@@ -30,6 +30,9 @@ import {
   dispatchSubagent,
 } from './subagent/router.js'
 import { parseDelegation, routeDelegation } from './orchestrator.js'
+import { discardIdea, listParkedIdeas, openIdea } from './idea-open.js'
+import { isSurveyActive } from './conversation-state.js'
+import { handleSurveyReply } from './rituals.js'
 import { reindexVault } from './vault-indexer.js'
 import { mirrorThesis } from './thesis-mirror.js'
 import { routeCapture, type CaptureType } from './capture-router.js'
@@ -362,6 +365,48 @@ async function handleCommand(ctx: Context, text: string): Promise<boolean> {
       )
       return true
     }
+    case '/ideas': {
+      const parked = listParkedIdeas()
+      const body = parked.length === 0
+        ? '<i>no parked ideas</i>'
+        : parked
+            .map(p => `• <code>${escapeHtml(p.slug)}</code>${p.title ? ` — ${escapeHtml(p.title)}` : ''}`)
+            .join('\n')
+      await sendHtml(ctx, `<b>Parked ideas</b> · ${parked.length}\n${body}\n\n<i>/open &lt;slug&gt; · /discard &lt;slug&gt;</i>`)
+      return true
+    }
+    case '/open': {
+      const slug = parts[1]
+      const override = parts.slice(2).join(' ').trim() || undefined
+      if (!slug) {
+        await ctx.reply('usage: /open <slug> [name override]')
+        return true
+      }
+      try {
+        const outcome = await openIdea(slug, override)
+        await sendHtml(
+          ctx,
+          `<b>Opened</b> · <code>${escapeHtml(outcome.projectPath)}</code>\nPipeline → Projects ${outcome.projectNumber}. Title: <i>${escapeHtml(outcome.title)}</i>.`
+        )
+      } catch (err) {
+        await ctx.reply(`⚠️ open error: ${err instanceof Error ? err.message : String(err)}`)
+      }
+      return true
+    }
+    case '/discard': {
+      const slug = parts[1]
+      if (!slug) {
+        await ctx.reply('usage: /discard <slug>')
+        return true
+      }
+      try {
+        const outcome = await discardIdea(slug)
+        await sendHtml(ctx, `archived <code>${escapeHtml(outcome.archivedPath)}</code>`)
+      } catch (err) {
+        await ctx.reply(`⚠️ discard error: ${err instanceof Error ? err.message : String(err)}`)
+      }
+      return true
+    }
     default:
       return false
   }
@@ -451,6 +496,15 @@ async function processMessage(ctx: Context, text: string): Promise<void> {
   touchActivity()
 
   if (await handleKillPhraseCheck(ctx, text)) return
+
+  // Active survey takes precedence over command parsing — user can still
+  // /cancel by typing `cancel` inside a survey.
+  if (isSurveyActive(chatId) && !text.trim().startsWith('/')) {
+    const send = async (html: string): Promise<void> => { await sendHtml(ctx, html) }
+    const handled = await handleSurveyReply(chatId, text, send)
+    if (handled) return
+  }
+
   try {
     if (await handleCommand(ctx, text)) {
       audit('command', text.split(/\s+/)[0] ?? '', { chatId })
