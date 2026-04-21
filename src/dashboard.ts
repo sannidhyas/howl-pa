@@ -2,8 +2,16 @@ import { Hono, type Context } from 'hono'
 import { serve, type ServerType } from '@hono/node-server'
 import { streamSSE } from 'hono/streaming'
 import { timingSafeEqual as tseq } from 'node:crypto'
-import { getDb } from './db.js'
+import {
+  getDb,
+  audit,
+  setTaskStatus,
+  deleteScheduledTask,
+  enqueueMission,
+  updateMissionTaskStatus,
+} from './db.js'
 import { logger } from './logger.js'
+import { BUILT_INS, runMissionByName } from './scheduler.js'
 import { chatEvents, type ChatEventPayload } from './state.js'
 import { dashboardHtml } from './dashboard-html.js'
 
@@ -31,6 +39,30 @@ function requireToken(c: Context): Response | null {
   const token = c.req.query('token') ?? c.req.header('x-dashboard-token')
   if (!verifyToken(token)) {
     return new Response('unauthorized', { status: 401 })
+  }
+  return null
+}
+
+const NAME_RE = /^[a-z0-9_-]{1,64}$/i
+
+function validateName(c: Context): { name: string } | Response {
+  const name = c.req.param('name') ?? ''
+  if (!NAME_RE.test(name)) {
+    return new Response(JSON.stringify({ ok: false, error: 'invalid name' }), {
+      status: 400,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+  return { name }
+}
+
+function requireJson(c: Context): Response | null {
+  const ct = c.req.header('content-type') ?? ''
+  if (!ct.includes('application/json')) {
+    return new Response(
+      JSON.stringify({ ok: false, error: 'Content-Type: application/json required' }),
+      { status: 415, headers: { 'content-type': 'application/json' } }
+    )
   }
   return null
 }
@@ -63,14 +95,14 @@ function buildApp(): Hono {
     if (gate) return gate
     const convo = one<{ n: number }>('SELECT COUNT(*) AS n FROM conversation_log')
     const chunks = one<{ n: number }>('SELECT COUNT(*) AS n FROM memory_chunks')
-    const audit = one<{ n: number }>('SELECT COUNT(*) AS n FROM audit_log')
+    const auditCount = one<{ n: number }>('SELECT COUNT(*) AS n FROM audit_log')
     return c.json({
       ok: true,
       uptime_s: Math.floor(process.uptime()),
       pid: process.pid,
       convo_rows: convo?.n ?? 0,
       memory_chunks: chunks?.n ?? 0,
-      audit_rows: audit?.n ?? 0,
+      audit_rows: auditCount?.n ?? 0,
     })
   })
 
@@ -118,12 +150,118 @@ function buildApp(): Hono {
   app.get('/api/scheduler', c => {
     const gate = requireToken(c)
     if (gate) return gate
+    const builtinNames = new Set(BUILT_INS.map(b => b.name))
+    const data = rows(
+      `SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, status
+       FROM scheduled_tasks ORDER BY next_run`
+    )
     return c.json({
-      rows: rows(
-        `SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, status
-         FROM scheduled_tasks ORDER BY next_run`
-      ),
+      rows: data.map(r => ({ ...r, is_builtin: builtinNames.has(r.name as string) })),
     })
+  })
+
+  app.post('/api/scheduler/:name/run-now', c => {
+    const gate = requireToken(c)
+    if (gate) return gate
+    const ctGate = requireJson(c)
+    if (ctGate) return ctGate
+    const v = validateName(c)
+    if (v instanceof Response) return v
+    const { name } = v
+
+    type TaskRow = { id: number; mission: string; args: string | null; status: string }
+    const task = one<TaskRow>(
+      'SELECT id, mission, args, status FROM scheduled_tasks WHERE name = ?',
+      name
+    )
+    if (!task) {
+      return c.json({ ok: false, error: 'not found' }, 404)
+    }
+    if (task.status === 'running') {
+      return c.json({ ok: false, error: 'already running' }, 409)
+    }
+
+    let parsedArgs: Record<string, unknown> | undefined
+    if (task.args) {
+      try {
+        const parsed = JSON.parse(task.args) as unknown
+        if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          parsedArgs = parsed as Record<string, unknown>
+        }
+      } catch (err: unknown) {
+        logger.error({ err, task: name }, 'invalid scheduled task args — ignoring')
+      }
+    }
+
+    runMissionByName(task.mission, parsedArgs)
+      .then(summary => {
+        audit('scheduler_run_now', `ok: ${summary}`)
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        logger.error({ err, task: name }, 'run-now failed')
+        audit('scheduler_run_now', `error: ${msg}`, { blocked: false })
+      })
+
+    return c.json({ ok: true, mission: task.mission, queued_at: Date.now() })
+  })
+
+  app.post('/api/scheduler/:name/pause', c => {
+    const gate = requireToken(c)
+    if (gate) return gate
+    const ctGate = requireJson(c)
+    if (ctGate) return ctGate
+    const v = validateName(c)
+    if (v instanceof Response) return v
+    const { name } = v
+
+    if (!setTaskStatus(name, 'paused')) {
+      return c.json({ ok: false, error: 'not found' }, 404)
+    }
+    audit('scheduler_pause', name)
+    return c.json({ ok: true, name, status: 'paused' })
+  })
+
+  app.post('/api/scheduler/:name/resume', c => {
+    const gate = requireToken(c)
+    if (gate) return gate
+    const ctGate = requireJson(c)
+    if (ctGate) return ctGate
+    const v = validateName(c)
+    if (v instanceof Response) return v
+    const { name } = v
+
+    if (!setTaskStatus(name, 'active')) {
+      return c.json({ ok: false, error: 'not found' }, 404)
+    }
+    audit('scheduler_resume', name)
+    return c.json({ ok: true, name, status: 'active' })
+  })
+
+  app.post('/api/scheduler/:name/delete', c => {
+    const gate = requireToken(c)
+    if (gate) return gate
+    const ctGate = requireJson(c)
+    if (ctGate) return ctGate
+    const v = validateName(c)
+    if (v instanceof Response) return v
+    const { name } = v
+
+    if (!deleteScheduledTask(name)) {
+      return c.json({ ok: false, error: 'not found' }, 404)
+    }
+    audit('scheduler_delete', name)
+
+    const builtinNames = new Set(BUILT_INS.map(b => b.name))
+    if (builtinNames.has(name)) {
+      return c.json({
+        ok: true,
+        name,
+        deleted: true,
+        note: 'built-in — will re-register on next scheduler init; pause if you want a durable stop',
+      })
+    }
+    return c.json({ ok: true, name, deleted: true })
   })
 
   app.get('/api/missions', c => {
@@ -135,6 +273,86 @@ function buildApp(): Hono {
          FROM mission_tasks ORDER BY created_at DESC LIMIT 100`
       ),
     })
+  })
+
+  app.post('/api/missions/:id/retry', c => {
+    const gate = requireToken(c)
+    if (gate) return gate
+    const ctGate = requireJson(c)
+    if (ctGate) return ctGate
+
+    const idRaw = c.req.param('id')
+    const id = Number.parseInt(idRaw, 10)
+    if (Number.isNaN(id)) {
+      return c.json({ ok: false, error: 'invalid id' }, 400)
+    }
+
+    type MRow = {
+      id: number
+      title: string
+      mission: string | null
+      assigned_agent: string
+      priority: number
+      status: string
+    }
+    const original = one<MRow>(
+      'SELECT id, title, mission, assigned_agent, priority, status FROM mission_tasks WHERE id = ?',
+      id
+    )
+    if (!original) {
+      return c.json({ ok: false, error: 'not found' }, 404)
+    }
+    if (original.status === 'running' || original.status === 'queued') {
+      return c.json({ ok: false, error: 'already in flight' }, 409)
+    }
+    if (!original.mission) {
+      return c.json(
+        { ok: false, error: 'not a retryable mission — use the chat interface' },
+        400
+      )
+    }
+
+    const newId = enqueueMission({
+      title: original.title,
+      mission: original.mission,
+      assignedAgent: original.assigned_agent,
+      priority: original.priority,
+    })
+    audit('mission_retry', `retrying #${id} as #${newId}`)
+    return c.json({ ok: true, mission_id: newId })
+  })
+
+  app.post('/api/missions/:id/cancel', c => {
+    const gate = requireToken(c)
+    if (gate) return gate
+    const ctGate = requireJson(c)
+    if (ctGate) return ctGate
+
+    const idRaw = c.req.param('id')
+    const id = Number.parseInt(idRaw, 10)
+    if (Number.isNaN(id)) {
+      return c.json({ ok: false, error: 'invalid id' }, 400)
+    }
+
+    type MRow = { id: number; status: string }
+    const task = one<MRow>('SELECT id, status FROM mission_tasks WHERE id = ?', id)
+    if (!task) {
+      return c.json({ ok: false, error: 'not found' }, 404)
+    }
+    if (task.status === 'running') {
+      return c.json({ ok: false, error: 'cannot cancel in-flight mission' }, 409)
+    }
+    if (
+      task.status === 'done' ||
+      task.status === 'failed' ||
+      task.status === 'cancelled'
+    ) {
+      return c.json({ ok: false, error: 'already terminal' }, 409)
+    }
+
+    updateMissionTaskStatus(id, 'cancelled', 'cancelled via dashboard')
+    audit('mission_cancel', `mission #${id}`)
+    return c.json({ ok: true, mission_id: id, status: 'cancelled' })
   })
 
   app.get('/api/subagents', c => {
@@ -248,12 +466,16 @@ function buildApp(): Hono {
       subscribe('chat_error')
       subscribe('session_end')
 
-      const ping = setInterval(() => void stream.writeSSE({ event: 'ping', data: String(Date.now()) }).catch(() => {}), 30_000)
+      const ping = setInterval(
+        () => void stream.writeSSE({ event: 'ping', data: String(Date.now()) }).catch(() => {}),
+        30_000
+      )
       ping.unref()
 
       stream.onAbort(() => {
         clearInterval(ping)
-        for (const h of handlers) chatEvents.off(h.event as keyof ChatEventPayload, h.fn as never)
+        for (const h of handlers)
+          chatEvents.off(h.event as keyof ChatEventPayload, h.fn as never)
       })
 
       await new Promise(() => {

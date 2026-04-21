@@ -2,8 +2,9 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { streamSSE } from 'hono/streaming';
 import { timingSafeEqual as tseq } from 'node:crypto';
-import { getDb } from './db.js';
+import { getDb, audit, setTaskStatus, deleteScheduledTask, enqueueMission, updateMissionTaskStatus, } from './db.js';
 import { logger } from './logger.js';
+import { BUILT_INS, runMissionByName } from './scheduler.js';
 import { chatEvents } from './state.js';
 import { dashboardHtml } from './dashboard-html.js';
 const DEFAULT_PORT = Number.parseInt(process.env.DASHBOARD_PORT ?? '3141', 10);
@@ -34,6 +35,24 @@ function requireToken(c) {
     }
     return null;
 }
+const NAME_RE = /^[a-z0-9_-]{1,64}$/i;
+function validateName(c) {
+    const name = c.req.param('name') ?? '';
+    if (!NAME_RE.test(name)) {
+        return new Response(JSON.stringify({ ok: false, error: 'invalid name' }), {
+            status: 400,
+            headers: { 'content-type': 'application/json' },
+        });
+    }
+    return { name };
+}
+function requireJson(c) {
+    const ct = c.req.header('content-type') ?? '';
+    if (!ct.includes('application/json')) {
+        return new Response(JSON.stringify({ ok: false, error: 'Content-Type: application/json required' }), { status: 415, headers: { 'content-type': 'application/json' } });
+    }
+    return null;
+}
 function rows(sql, ...args) {
     return getDb()
         .prepare(sql)
@@ -58,14 +77,14 @@ function buildApp() {
             return gate;
         const convo = one('SELECT COUNT(*) AS n FROM conversation_log');
         const chunks = one('SELECT COUNT(*) AS n FROM memory_chunks');
-        const audit = one('SELECT COUNT(*) AS n FROM audit_log');
+        const auditCount = one('SELECT COUNT(*) AS n FROM audit_log');
         return c.json({
             ok: true,
             uptime_s: Math.floor(process.uptime()),
             pid: process.pid,
             convo_rows: convo?.n ?? 0,
             memory_chunks: chunks?.n ?? 0,
-            audit_rows: audit?.n ?? 0,
+            audit_rows: auditCount?.n ?? 0,
         });
     });
     app.get('/api/memories', c => {
@@ -103,10 +122,113 @@ function buildApp() {
         const gate = requireToken(c);
         if (gate)
             return gate;
+        const builtinNames = new Set(BUILT_INS.map(b => b.name));
+        const data = rows(`SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, status
+       FROM scheduled_tasks ORDER BY next_run`);
         return c.json({
-            rows: rows(`SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, status
-         FROM scheduled_tasks ORDER BY next_run`),
+            rows: data.map(r => ({ ...r, is_builtin: builtinNames.has(r.name) })),
         });
+    });
+    app.post('/api/scheduler/:name/run-now', c => {
+        const gate = requireToken(c);
+        if (gate)
+            return gate;
+        const ctGate = requireJson(c);
+        if (ctGate)
+            return ctGate;
+        const v = validateName(c);
+        if (v instanceof Response)
+            return v;
+        const { name } = v;
+        const task = one('SELECT id, mission, args, status FROM scheduled_tasks WHERE name = ?', name);
+        if (!task) {
+            return c.json({ ok: false, error: 'not found' }, 404);
+        }
+        if (task.status === 'running') {
+            return c.json({ ok: false, error: 'already running' }, 409);
+        }
+        let parsedArgs;
+        if (task.args) {
+            try {
+                const parsed = JSON.parse(task.args);
+                if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    parsedArgs = parsed;
+                }
+            }
+            catch (err) {
+                logger.error({ err, task: name }, 'invalid scheduled task args — ignoring');
+            }
+        }
+        runMissionByName(task.mission, parsedArgs)
+            .then(summary => {
+            audit('scheduler_run_now', `ok: ${summary}`);
+        })
+            .catch((err) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            logger.error({ err, task: name }, 'run-now failed');
+            audit('scheduler_run_now', `error: ${msg}`, { blocked: false });
+        });
+        return c.json({ ok: true, mission: task.mission, queued_at: Date.now() });
+    });
+    app.post('/api/scheduler/:name/pause', c => {
+        const gate = requireToken(c);
+        if (gate)
+            return gate;
+        const ctGate = requireJson(c);
+        if (ctGate)
+            return ctGate;
+        const v = validateName(c);
+        if (v instanceof Response)
+            return v;
+        const { name } = v;
+        if (!setTaskStatus(name, 'paused')) {
+            return c.json({ ok: false, error: 'not found' }, 404);
+        }
+        audit('scheduler_pause', name);
+        return c.json({ ok: true, name, status: 'paused' });
+    });
+    app.post('/api/scheduler/:name/resume', c => {
+        const gate = requireToken(c);
+        if (gate)
+            return gate;
+        const ctGate = requireJson(c);
+        if (ctGate)
+            return ctGate;
+        const v = validateName(c);
+        if (v instanceof Response)
+            return v;
+        const { name } = v;
+        if (!setTaskStatus(name, 'active')) {
+            return c.json({ ok: false, error: 'not found' }, 404);
+        }
+        audit('scheduler_resume', name);
+        return c.json({ ok: true, name, status: 'active' });
+    });
+    app.post('/api/scheduler/:name/delete', c => {
+        const gate = requireToken(c);
+        if (gate)
+            return gate;
+        const ctGate = requireJson(c);
+        if (ctGate)
+            return ctGate;
+        const v = validateName(c);
+        if (v instanceof Response)
+            return v;
+        const { name } = v;
+        if (!deleteScheduledTask(name)) {
+            return c.json({ ok: false, error: 'not found' }, 404);
+        }
+        audit('scheduler_delete', name);
+        const builtinNames = new Set(BUILT_INS.map(b => b.name));
+        if (builtinNames.has(name)) {
+            return c.json({
+                ok: true,
+                name,
+                deleted: true,
+                note: 'built-in — will re-register on next scheduler init; pause if you want a durable stop',
+            });
+        }
+        return c.json({ ok: true, name, deleted: true });
     });
     app.get('/api/missions', c => {
         const gate = requireToken(c);
@@ -116,6 +238,65 @@ function buildApp() {
             rows: rows(`SELECT id, title, mission, assigned_agent, priority, status, result, started_at, completed_at, created_at
          FROM mission_tasks ORDER BY created_at DESC LIMIT 100`),
         });
+    });
+    app.post('/api/missions/:id/retry', c => {
+        const gate = requireToken(c);
+        if (gate)
+            return gate;
+        const ctGate = requireJson(c);
+        if (ctGate)
+            return ctGate;
+        const idRaw = c.req.param('id');
+        const id = Number.parseInt(idRaw, 10);
+        if (Number.isNaN(id)) {
+            return c.json({ ok: false, error: 'invalid id' }, 400);
+        }
+        const original = one('SELECT id, title, mission, assigned_agent, priority, status FROM mission_tasks WHERE id = ?', id);
+        if (!original) {
+            return c.json({ ok: false, error: 'not found' }, 404);
+        }
+        if (original.status === 'running' || original.status === 'queued') {
+            return c.json({ ok: false, error: 'already in flight' }, 409);
+        }
+        if (!original.mission) {
+            return c.json({ ok: false, error: 'not a retryable mission — use the chat interface' }, 400);
+        }
+        const newId = enqueueMission({
+            title: original.title,
+            mission: original.mission,
+            assignedAgent: original.assigned_agent,
+            priority: original.priority,
+        });
+        audit('mission_retry', `retrying #${id} as #${newId}`);
+        return c.json({ ok: true, mission_id: newId });
+    });
+    app.post('/api/missions/:id/cancel', c => {
+        const gate = requireToken(c);
+        if (gate)
+            return gate;
+        const ctGate = requireJson(c);
+        if (ctGate)
+            return ctGate;
+        const idRaw = c.req.param('id');
+        const id = Number.parseInt(idRaw, 10);
+        if (Number.isNaN(id)) {
+            return c.json({ ok: false, error: 'invalid id' }, 400);
+        }
+        const task = one('SELECT id, status FROM mission_tasks WHERE id = ?', id);
+        if (!task) {
+            return c.json({ ok: false, error: 'not found' }, 404);
+        }
+        if (task.status === 'running') {
+            return c.json({ ok: false, error: 'cannot cancel in-flight mission' }, 409);
+        }
+        if (task.status === 'done' ||
+            task.status === 'failed' ||
+            task.status === 'cancelled') {
+            return c.json({ ok: false, error: 'already terminal' }, 409);
+        }
+        updateMissionTaskStatus(id, 'cancelled', 'cancelled via dashboard');
+        audit('mission_cancel', `mission #${id}`);
+        return c.json({ ok: true, mission_id: id, status: 'cancelled' });
     });
     app.get('/api/subagents', c => {
         const gate = requireToken(c);

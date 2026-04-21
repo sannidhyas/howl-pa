@@ -456,6 +456,12 @@ export type AuditEventType =
   | 'blocked'
   | 'exfil_redacted'
   | 'capture'
+  | 'scheduler_run_now'
+  | 'scheduler_pause'
+  | 'scheduler_resume'
+  | 'scheduler_delete'
+  | 'mission_retry'
+  | 'mission_cancel'
 
 export function audit(
   eventType: AuditEventType,
@@ -731,7 +737,7 @@ export function recoverStuckTasks(timeoutMs: number): number {
 
 // Mission tasks (queue) --------------------------------------------------
 
-export type MissionTaskStatus = 'queued' | 'running' | 'done' | 'failed'
+export type MissionTaskStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled'
 
 export type MissionTaskRow = {
   id: number
@@ -795,7 +801,7 @@ export function updateMissionTaskStatus(
     .prepare(
       `UPDATE mission_tasks SET status = ?, result = COALESCE(?, result),
          started_at = CASE WHEN ? = 'running' AND started_at IS NULL THEN strftime('%s','now')*1000 ELSE started_at END,
-         completed_at = CASE WHEN ? IN ('done','failed') THEN strftime('%s','now')*1000 ELSE completed_at END
+         completed_at = CASE WHEN ? IN ('done','failed','cancelled') THEN strftime('%s','now')*1000 ELSE completed_at END
        WHERE id = ?`
     )
     .run(status, result ?? null, status, status, id)
