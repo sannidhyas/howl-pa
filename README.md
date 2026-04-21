@@ -15,8 +15,10 @@ v0.0.1. Runs daily against a real workload. Ships as both an npm package and a C
 ## Quickstart
 
 ```sh
-# 1. Install directly from GitHub (npm publish pending)
-npm i -g github:sannidhyas/howl-pa
+# 1. Install the release tarball directly. (This works around an npm
+#    git-install filesystem race seen on Fedora/Bluefin — the tarball
+#    avoids it entirely.)
+npm i -g https://github.com/sannidhyas/howl-pa/releases/download/v0.0.5/howl-pa-0.0.5.tgz
 
 # 2. First-run wizard (PIN, kill phrase, Telegram bot token, chat allowlist)
 howl-pa setup
@@ -28,7 +30,7 @@ howl-pa setup:google
 howl-pa start
 ```
 
-Once v0.0.1 is pushed to the npm registry, `npm i -g howl-pa` will work as well.
+Once the package is pushed to the npm registry, `npm i -g howl-pa` will work as well.
 
 Then DM your bot on Telegram. See [`docs/install.md`](./docs/install.md) for the full flow, including Claude Code plugin install.
 

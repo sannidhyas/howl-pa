@@ -18,14 +18,22 @@ Two install paths. They compose — most users want both.
 
 ## Install — npm path
 
-Published npm package (`npm i -g howl-pa`) is pending owner's `npm publish`. Until then install directly from GitHub:
+Published npm package (`npm i -g howl-pa`) is pending owner's `npm publish`. Until then install the release tarball:
 
 ```sh
-npm i -g github:sannidhyas/howl-pa
+npm i -g https://github.com/sannidhyas/howl-pa/releases/download/v0.0.5/howl-pa-0.0.5.tgz
 howl-pa setup
 ```
 
-npm will clone the repo, install devDeps, and run the `prepare` script which compiles `dist/` locally. `howl-pa` becomes available on your PATH.
+The tarball ships compiled `dist/` so there's no TypeScript toolchain needed on the target machine and no postinstall scripts that can fail in constrained install environments. `howl-pa` becomes available on your `$PATH`.
+
+### Alternative: install from git source
+
+```sh
+npm i -g github:sannidhyas/howl-pa
+```
+
+This works on most systems. On Fedora/Bluefin and some other Linux distros using overlayfs, `npm install -g` from a git URL occasionally drops files during the tar extraction step (observed: `TAR_ENTRY_ERROR`). The tarball URL above avoids that bug entirely.
 
 The setup wizard prompts for:
 
