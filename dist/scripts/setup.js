@@ -185,6 +185,7 @@ async function main() {
     await maybeUpdate(existing, 'DASHBOARD_USERNAME', 'Dashboard username (default: howl)');
     if (!existing.DASHBOARD_USERNAME)
         existing.DASHBOARD_USERNAME = 'howl';
+    console.log('  A password lets you sign in from a browser (phone included) when the dashboard is tunneled to a public domain. Leave blank to stay token-only.');
     const dashPw = await prompt('Dashboard password (blank = token-only auth, recommended for localhost): ', true);
     if (dashPw) {
         const confirmPw = await prompt('Confirm dashboard password: ', true);

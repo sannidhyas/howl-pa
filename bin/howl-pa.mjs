@@ -24,6 +24,7 @@ Commands:
   howl            Project agent CLI (create, list, attach)
   council         Bounce a prompt across the local Ollama council
   daemon          Manage the howl-pa systemd --user service (install|uninstall|status|logs)
+  set-password    Add or update the dashboard password
   version         Print version and exit
 
 Env: set HOWL_CONFIG or CLAUDECLAW_CONFIG to override the config dir.
@@ -80,6 +81,9 @@ switch (cmd) {
     break
   case 'daemon':
     runNode('scripts/daemon.js', args)
+    break
+  case 'set-password':
+    runNode('scripts/set-password.js', args)
     break
   case 'version':
   case '--version':
