@@ -3,6 +3,7 @@ import { logger } from './logger.js';
 import { writeJournal, writeLiterature, writeNote, writeTask, writeThesisFragment } from './vault-writer.js';
 import { runIdeaFlow } from './idea-flow.js';
 import { upsertTask } from './tasks.js';
+import { listMemories } from './db.js';
 const CLASSIFY_TIMEOUT_MS = 30_000;
 const CLASSIFIER_PROMPT = `You are a classifier for a personal knowledge-base assistant. Read the user message and return EXACTLY one JSON object on a single line, no prose.
 
@@ -19,8 +20,14 @@ Type rules:
 - ephemeral — small-talk, greetings, commands without capture value. NO WRITE.
 
 Return ONLY the JSON. Do not wrap in code fences. No explanation.`;
+function renderCaptureHints() {
+    return listMemories('capture_hint').map(m => `${m.key}: ${m.value}`).join('\n');
+}
 export async function classifyCapture(text) {
-    const prompt = `${CLASSIFIER_PROMPT}\n\nMessage:\n${text}`;
+    const hints = renderCaptureHints();
+    const prompt = hints
+        ? `${CLASSIFIER_PROMPT}\n\nUser capture hints:\n${hints}\n\nMessage:\n${text}`
+        : `${CLASSIFIER_PROMPT}\n\nMessage:\n${text}`;
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), CLASSIFY_TIMEOUT_MS);
     timer.unref();

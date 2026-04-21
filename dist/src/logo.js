@@ -27,27 +27,28 @@ export function textBanner() {
 export function textOneLine() {
     return `${BOLD}${FG}Howl PA${RESET} ${VIOLET}· personal mission control${RESET}`;
 }
-// Inline SVG wolf mark for HTML. Geometric wolf head in profile — tall
-// pointed ears, angular face, pointed snout. Two eye dots. Inherits
-// `currentColor` so it tints with the header state.
+// Inline SVG wolf mark — aggressive snarling head with tall swept-back
+// ears, angular cheekbones, narrowed eye slits, bared fangs. Fills with
+// `currentColor`; cut-outs use the dashboard dark background so the face
+// stays legible at 22px.
 export function svgMark(size = 22) {
     const s = String(size);
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="${s}" height="${s}" aria-hidden="true" focusable="false">
 <g fill="currentColor">
-<path d="M8 6 L22 30 L30 22 Z" />
-<path d="M56 6 L42 30 L34 22 Z" />
-<path d="M20 22 L16 30 L24 44 L32 56 L40 44 L48 30 L44 22 L38 28 L32 32 L26 28 Z" />
+<path d="M2 4 L24 22 L22 30 L14 26 Z" />
+<path d="M62 4 L40 22 L42 30 L50 26 Z" />
+<path d="M14 20 L10 34 L18 48 L30 62 L34 62 L46 48 L54 34 L50 20 L42 26 L34 32 L30 32 L22 26 Z" />
 </g>
 <g fill="#0b0c10">
-<circle cx="26" cy="32" r="1.8" />
-<circle cx="38" cy="32" r="1.8" />
+<path d="M18 28 L28 34 L26 28 Z" />
+<path d="M46 28 L36 34 L38 28 Z" />
+<path d="M22 44 L24 50 L27 46 L30 52 L32 46 L34 52 L37 46 L40 50 L42 44 Z" />
 </g>
 </svg>`;
 }
-// Favicon: compact URL-encoded SVG matching the mark above on a dark
-// rounded-square. Keep it tight; browsers cache at 32px.
+// Favicon: URL-encoded SVG of the same mark on a dark rounded-square.
 export function svgFavicon() {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="%230b0c10"/><g fill="%237cc5ff"><path d="M8 6 L22 30 L30 22 Z"/><path d="M56 6 L42 30 L34 22 Z"/><path d="M20 22 L16 30 L24 44 L32 56 L40 44 L48 30 L44 22 L38 28 L32 32 L26 28 Z"/></g><g fill="%230b0c10"><circle cx="26" cy="32" r="1.8"/><circle cx="38" cy="32" r="1.8"/></g></svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="%230b0c10"/><g fill="%237cc5ff"><path d="M2 4 L24 22 L22 30 L14 26 Z"/><path d="M62 4 L40 22 L42 30 L50 26 Z"/><path d="M14 20 L10 34 L18 48 L30 62 L34 62 L46 48 L54 34 L50 20 L42 26 L34 32 L30 32 L22 26 Z"/></g><g fill="%230b0c10"><path d="M18 28 L28 34 L26 28 Z"/><path d="M46 28 L36 34 L38 28 Z"/><path d="M22 44 L24 50 L27 46 L30 52 L32 46 L34 52 L37 46 L40 50 L42 44 Z"/></g></svg>`;
     return 'data:image/svg+xml,' + svg;
 }
 //# sourceMappingURL=logo.js.map

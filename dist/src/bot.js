@@ -4,7 +4,7 @@ import { logger } from './logger.js';
 import { executeEmergencyKill, checkIdleLock, isLocked, isSecurityEnabled, lock, matchesKillPhrase, touchActivity, unlock, } from './security.js';
 import { redactSecrets, scanForSecrets } from './exfiltration-guard.js';
 import { runAgentWithRetry } from './agent.js';
-import { audit, deleteScheduledTask, latestSessionFor, listMissionTasks, listScheduledTasks, setTaskStatus, } from './db.js';
+import { audit, deleteScheduledTask, latestSessionFor, listMissionTasks, listScheduledTasks, listMemories, getMemory, setTaskStatus, upsertMemory, deleteMemory, } from './db.js';
 import { BUILT_INS, scheduledTaskSummary } from './scheduler.js';
 import { executeMission } from './missions/runner.js';
 import { cronHuman } from './cron-human.js';
@@ -32,6 +32,41 @@ const ROUTINE_GROUPS = [
     { title: 'Weekly', names: ['weekly-review', 'venture-review'] },
     { title: 'Vault', names: ['vault-reindex'] },
 ];
+const VALID_MEMORY_SCOPES = ['global', 'email_hint', 'task_hint', 'agent_hint', 'capture_hint', 'journal_hint'];
+const MEMORY_KEY_RE = /^[a-z0-9_-]{1,64}$/;
+function isValidMemoryScope(value) {
+    return typeof value === 'string' && VALID_MEMORY_SCOPES.includes(value);
+}
+function memoryUsage() {
+    return `usage: /memory | /memory add [scope] <key> <value...> | /memory del <scope> <key> | /memory show <scope> <key>\nscopes: ${VALID_MEMORY_SCOPES.join(', ')}`;
+}
+function truncateMemoryValue(value, max = 80) {
+    const clean = value.replace(/\s+/g, ' ').trim();
+    return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+}
+function formatMemoryList() {
+    const rows = listMemories();
+    if (rows.length === 0)
+        return '<b>System memories</b>\n<i>none</i>';
+    const grouped = new Map();
+    for (const row of rows) {
+        const bucket = grouped.get(row.scope);
+        if (bucket)
+            bucket.push(row);
+        else
+            grouped.set(row.scope, [row]);
+    }
+    const sections = [...grouped.entries()].map(([scope, scopeRows]) => {
+        const lines = scopeRows.map(row => `• <code>${escapeHtml(row.key)}</code> — ${escapeHtml(truncateMemoryValue(row.value))}`);
+        return `<b>${escapeHtml(scope)}</b>\n${lines.join('\n')}`;
+    });
+    return `<b>System memories</b>\n\n${sections.join('\n\n')}`;
+}
+function validateMemoryKey(key) {
+    if (!key || !MEMORY_KEY_RE.test(key))
+        return null;
+    return key;
+}
 function formatRoutineLine(task, status) {
     const paused = status === 'paused' ? ' (paused)' : '';
     return `• <code>${escapeHtml(task.name)}</code> — ${escapeHtml(cronHuman(task.schedule))} — ${escapeHtml(task.description)}${paused}`;
@@ -208,6 +243,67 @@ async function handleCommand(ctx, text) {
                 return true;
             }
             await routeAndReply(ctx, body);
+            return true;
+        }
+        case '/memory': {
+            const sub = parts[1]?.toLowerCase();
+            if (!sub || sub === 'list') {
+                await sendHtml(ctx, formatMemoryList());
+                return true;
+            }
+            if (sub === 'add') {
+                const maybeScope = parts[2]?.toLowerCase();
+                let scope = 'global';
+                let keyIndex = 2;
+                if (isValidMemoryScope(maybeScope)) {
+                    scope = maybeScope;
+                    keyIndex = 3;
+                }
+                const key = validateMemoryKey(parts[keyIndex]);
+                const value = parts.slice(keyIndex + 1).join(' ').trim();
+                if (!key || value.length < 1 || value.length > 4000) {
+                    await ctx.reply(memoryUsage());
+                    return true;
+                }
+                try {
+                    upsertMemory(scope, key, value);
+                    audit('memory_upsert', `${scope}:${key}`, { chatId });
+                    await sendHtml(ctx, `saved <code>${escapeHtml(scope)}:${escapeHtml(key)}</code>`);
+                }
+                catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    await ctx.reply(`memory add failed: ${msg.slice(0, 300)}`);
+                }
+                return true;
+            }
+            if (sub === 'del') {
+                const scope = parts[2]?.toLowerCase();
+                const key = validateMemoryKey(parts[3]);
+                if (!isValidMemoryScope(scope) || !key) {
+                    await ctx.reply(memoryUsage());
+                    return true;
+                }
+                const deleted = deleteMemory(scope, key);
+                audit('memory_delete', `${scope}:${key}`, { chatId });
+                await ctx.reply(deleted ? `deleted ${scope}:${key}` : `not found: ${scope}:${key}`);
+                return true;
+            }
+            if (sub === 'show') {
+                const scope = parts[2]?.toLowerCase();
+                const key = validateMemoryKey(parts[3]);
+                if (!isValidMemoryScope(scope) || !key) {
+                    await ctx.reply(memoryUsage());
+                    return true;
+                }
+                const row = getMemory(scope, key);
+                if (!row) {
+                    await ctx.reply(`not found: ${scope}:${key}`);
+                    return true;
+                }
+                await sendHtml(ctx, `<b>${escapeHtml(scope)}:${escapeHtml(key)}</b>\n${escapeHtml(row.value)}`);
+                return true;
+            }
+            await ctx.reply(memoryUsage());
             return true;
         }
         case '/note':
@@ -463,6 +559,7 @@ async function handleCommand(ctx, text) {
                 '<code>/thesis</code> · <code>/literature</code> · <code>/journal</code>',
                 '<code>/recall &lt;query&gt;</code> · <code>/reindex</code> · <code>/mirror-thesis [--force]</code>',
                 '<code>/brief</code> · <code>/nudge</code> · <code>/routines</code> · <code>/health</code> · <code>/schedule list|pause|resume|delete|add|edit</code> · <code>/mission list|run|cancel|retry</code>',
+                '<code>/memory</code> · <code>/memory add [scope] &lt;key&gt; &lt;value...&gt;</code> · <code>/memory del &lt;scope&gt; &lt;key&gt;</code>',
                 '<code>/ask [backend] &lt;prompt&gt;</code> · <code>/council [aggregator] &lt;prompt&gt;</code> · <code>/backends</code>',
             ].join('\n'));
             return true;

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Howl PA wolf mark">
+  <defs>
+    <linearGradient id="fur" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#a6d6ff"/>
+      <stop offset="100%" stop-color="#4b8cc9"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7cc5ff" stop-opacity=".25"/>
+      <stop offset="100%" stop-color="#7cc5ff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="48" fill="#0b0c10"/>
+  <circle cx="128" cy="128" r="108" fill="url(#glow)"/>
+  <g transform="translate(0,4)">
+    <g fill="url(#fur)" stroke="#edf0f6" stroke-width="1.2" stroke-linejoin="round">
+      <path d="M20 16 L96 88 L88 120 L56 104 Z"/>
+      <path d="M236 16 L160 88 L168 120 L200 104 Z"/>
+      <path d="M56 80 L40 136 L72 192 L120 248 L136 248 L184 192 L216 136 L200 80 L168 104 L136 128 L120 128 L88 104 Z"/>
+    </g>
+    <g fill="#0b0c10">
+      <path d="M68 112 L112 136 L104 112 Z"/>
+      <path d="M188 112 L144 136 L152 112 Z"/>
+    </g>
+    <g fill="#0b0c10">
+      <path d="M84 176 L92 200 L108 184 L120 208 L128 184 L136 208 L148 184 L164 200 L172 176 Z"/>
+    </g>
+    <g fill="#edf0f6">
+      <path d="M106 188 L108 204 L113 190 Z"/>
+      <path d="M150 188 L148 204 L143 190 Z"/>
+    </g>
+  </g>
+</svg>

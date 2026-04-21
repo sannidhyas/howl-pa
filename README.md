@@ -1,25 +1,35 @@
+<p align="center">
+  <img src="assets/wolf-banner.svg" alt="Howl PA — personal mission control" width="720" />
+</p>
+
 # Howl PA
 
-> **Install in 4 commands**
->
-> ```sh
-> npm i -g howl-pa
-> howl-pa setup
-> howl-pa setup:google
-> howl-pa start
-> ```
-
-Personal Mission Control. One assistant across three surfaces:
+Personal Mission Control for one person. One assistant across three surfaces:
 
 - **Phone** — Telegram bot for capture + native Google notifications
-- **Laptop** — Claude Code sessions for all real work
+- **Laptop** — Dashboard (local or tunneled), Claude Code `/howl` slash command, and Claude Code sessions for real work
 - **Anywhere** — Obsidian vault as the second brain
 
-Telegram captures everything, classifies it, writes to the right Obsidian path, and commits. The bot does not try to be the notification surface — it creates Google Tasks + Calendar events and lets your phone's native Google apps do the nudging. Subagent work routes to Codex by default (non-frontend) and Claude for design, with Ollama as a local council member.
+Telegram captures everything, classifies it, writes to the right Obsidian path, and commits. The dashboard is the full control plane: routines, missions, capture, audit transcripts, Claude + Codex usage. The `/howl` Claude Code command hits the same API from inside any editor session. Subagent work routes to Codex by default (non-frontend) and Claude for design, with Ollama as a local council member.
+
+## Install in one command
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/sannidhyas/howl-pa/main/install.sh | bash
+```
+
+Or the four-step manual path:
+
+```sh
+npm i -g howl-pa
+howl-pa setup
+howl-pa setup:google
+howl-pa start
+```
 
 ## Status
 
-v0.0.8. Runs daily against a real workload. Ships as both an npm package and a Claude Code plugin.
+v0.0.18. Runs daily against a real workload. Ships as an npm package with a bundled Claude Code slash command.
 
 ## Quickstart
 
@@ -30,7 +40,8 @@ npm i -g howl-pa
 # fallback for air-gapped / registry-unreachable environments:
 # npm i -g https://github.com/sannidhyas/howl-pa/releases/latest/download/howl-pa.tgz
 
-# 2. First-run wizard (PIN, kill phrase, Telegram bot token, chat allowlist)
+# 2. First-run wizard (PIN, kill phrase, Telegram bot token, chat allowlist,
+#    dashboard password)
 howl-pa setup
 
 # 3. Google OAuth for Gmail + Calendar + Tasks
@@ -38,6 +49,9 @@ howl-pa setup:google
 
 # 4. Start the bot + scheduler + dashboard
 howl-pa start
+
+# 5. Or run as a background service (systemd --user)
+howl-pa daemon install
 ```
 
 Then DM your bot on Telegram. See [`docs/install.md`](./docs/install.md) for the full flow, including Claude Code plugin install.

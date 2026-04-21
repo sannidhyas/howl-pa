@@ -954,7 +954,8 @@ export function dashboardHtml(token) {
       <button data-tab="feed">Feed</button>
       <button data-tab="inbox">Inbox <span class="count" id="count-inbox">·</span></button>
       <button data-tab="calendar">Calendar <span class="count" id="count-calendar">·</span></button>
-      <button data-tab="memory">Memory</button>
+      <button data-tab="vault">Vault</button>
+      <button data-tab="memories">Memory</button>
       <button data-tab="capture">Capture</button>
       <button data-tab="subagents">Subagents</button>
       <button data-tab="usage">Usage</button>
@@ -1040,9 +1041,22 @@ export function dashboardHtml(token) {
         <div id="calendar-wrap"></div>
       </section>
 
-      <section id="memory" class="panel">
+      <section id="vault" class="panel">
         <h2 class="section-title">Recent vault chunks</h2>
         <div id="memory-wrap"></div>
+      </section>
+
+      <section id="memories" class="panel">
+        <div class="toolbar">
+          <div class="filter-group" id="memory-scope-filter"></div>
+          <div class="grow"></div>
+          <button class="btn primary" id="memories-new">+ New memory</button>
+          <button class="btn ghost" id="memories-refresh">↻ Refresh</button>
+        </div>
+        <div id="memories-wrap"></div>
+        <div class="hint" style="margin-top:14px">
+          Memories are short key→value hints injected into agent prompts. Scope decides which agent sees them — global goes everywhere; email_hint feeds the Gmail classifier; capture_hint overrides capture classification; agent_hint prepends to every subagent call.
+        </div>
       </section>
 
       <section id="subagents" class="panel">
@@ -1698,6 +1712,148 @@ export function dashboardHtml(token) {
       } catch { /* quiet */ }
     }
 
+    // ───── system memories ─────
+    let memoryScopes = [];
+    let activeMemoryScope = '';
+    let memoryRows = [];
+    async function loadMemoryScopes(){
+      try {
+        const r = await getJson('/api/memory/scopes');
+        memoryScopes = r.scopes || r.rows || [];
+        if (!activeMemoryScope && memoryScopes.length) activeMemoryScope = memoryScopes[0].id;
+        renderScopeFilter();
+      } catch (e) {
+        document.getElementById('memory-scope-filter').innerHTML = '<span class="muted" style="padding:6px 10px;font-size:12px">scope list failed: ' + escapeHtml(e.message) + '</span>';
+      }
+    }
+    function renderScopeFilter(){
+      const wrap = document.getElementById('memory-scope-filter');
+      wrap.innerHTML = memoryScopes.map(s => {
+        const on = s.id === activeMemoryScope ? ' on' : '';
+        return '<button data-scope="' + escapeHtml(s.id) + '" class="' + on.trim() + '" title="' + escapeHtml(s.description || '') + '">' + escapeHtml(s.label || s.id) + '</button>';
+      }).join('');
+      wrap.querySelectorAll('button[data-scope]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          activeMemoryScope = btn.dataset.scope;
+          renderScopeFilter();
+          loadMemories();
+        });
+      });
+    }
+    async function loadMemories(){
+      const wrap = document.getElementById('memories-wrap');
+      if (!memoryScopes.length) await loadMemoryScopes();
+      if (!activeMemoryScope && memoryScopes.length) activeMemoryScope = memoryScopes[0].id;
+      wrap.innerHTML = '<div class="skeleton" style="height:80px"></div>';
+      try {
+        const url = activeMemoryScope ? '/api/memory?scope=' + encodeURIComponent(activeMemoryScope) : '/api/memory';
+        const r = await getJson(url);
+        memoryRows = r.rows || [];
+        renderMemoryList();
+      } catch (e) {
+        wrap.innerHTML = '<div class="empty"><div class="icon">⚠</div><div class="msg">' + escapeHtml(e.message) + '</div></div>';
+      }
+    }
+    function renderMemoryList(){
+      const wrap = document.getElementById('memories-wrap');
+      if (!memoryRows.length) {
+        const desc = memoryScopes.find(s => s.id === activeMemoryScope)?.description || '';
+        wrap.innerHTML = '<div class="empty"><div class="icon">◌</div><div class="msg">No memories in this scope yet</div><div class="hint">' + escapeHtml(desc) + '</div></div>';
+        return;
+      }
+      wrap.innerHTML = '<table><thead><tr><th>Scope</th><th>Key</th><th>Value</th><th>Updated</th><th></th></tr></thead><tbody>' +
+        memoryRows.map(r => {
+          const valueShort = (r.value || '').length > 180 ? escapeHtml(r.value.slice(0, 180)) + '…' : escapeHtml(r.value || '');
+          return '<tr>' +
+            '<td><span class="pill builtin">' + escapeHtml(r.scope) + '</span></td>' +
+            '<td class="mono">' + escapeHtml(r.key) + '</td>' +
+            '<td class="truncate">' + valueShort + '</td>' +
+            '<td class="mono muted">' + escapeHtml(fmtRel(r.updated_at)) + '</td>' +
+            '<td class="right">' +
+              '<button class="btn ghost" data-mem-action="edit" data-scope="' + escapeHtml(r.scope) + '" data-key="' + escapeHtml(r.key) + '">Edit</button> ' +
+              '<button class="btn danger" data-mem-action="delete" data-scope="' + escapeHtml(r.scope) + '" data-key="' + escapeHtml(r.key) + '">Delete</button>' +
+            '</td></tr>';
+        }).join('') +
+        '</tbody></table>';
+      wrap.querySelectorAll('[data-mem-action]').forEach(btn => btn.addEventListener('click', onMemoryAction));
+    }
+    async function onMemoryAction(ev){
+      const btn = ev.currentTarget;
+      const scope = btn.dataset.scope;
+      const key = btn.dataset.key;
+      const action = btn.dataset.memAction;
+      if (action === 'edit') {
+        const row = memoryRows.find(m => m.scope === scope && m.key === key);
+        if (row) openMemoryModal(row);
+        return;
+      }
+      if (action === 'delete') {
+        if (!confirm('Delete memory ' + scope + '/' + key + '?')) return;
+        try {
+          const res = await fetch(withQ('/api/memory?scope=' + encodeURIComponent(scope) + '&key=' + encodeURIComponent(key)), {
+            method: 'DELETE',
+            headers: { 'x-dashboard-token': TOKEN },
+          });
+          const data = await res.json().catch(()=>({}));
+          if (!res.ok) throw new Error(data.error || ('delete failed ' + res.status));
+          toast(scope + '/' + key + ' deleted', 'ok');
+          await loadMemories();
+        } catch (e) {
+          toast(e.message, 'err');
+        }
+      }
+    }
+    function openMemoryModal(existing){
+      const isEdit = !!existing;
+      const scope = existing ? existing.scope : (activeMemoryScope || (memoryScopes[0]?.id ?? 'global'));
+      const key = existing ? existing.key : '';
+      const value = existing ? existing.value : '';
+      const scopeOpts = memoryScopes.map(s => {
+        const sel = s.id === scope ? ' selected' : '';
+        return '<option value="' + escapeHtml(s.id) + '"' + sel + '>' + escapeHtml(s.label || s.id) + '</option>';
+      }).join('');
+      const body = \`
+        <div class="field"><label>Scope</label>
+          <select id="mm-scope" \${isEdit ? 'disabled' : ''}>\${scopeOpts}</select>
+        </div>
+        <div class="field"><label>Key</label>
+          <input id="mm-key" value="\${escapeHtml(key)}" placeholder="short-slug" \${isEdit ? 'disabled' : ''} spellcheck="false" />
+          <div class="help">Lowercase slug · [a-z0-9_-]{1,64}</div>
+          <div class="err">invalid key</div>
+        </div>
+        <div class="field"><label>Value</label>
+          <textarea id="mm-value" spellcheck="false" style="min-height:160px">\${escapeHtml(value)}</textarea>
+          <div class="help">Free text, up to 4000 chars. Will be injected into agent prompts.</div>
+        </div>
+      \`;
+      openModal({
+        title: isEdit ? 'Edit memory' : 'New memory',
+        sub: isEdit ? scope + '/' + key : 'Short hint injected into agent prompts for this scope.',
+        bodyHtml: body,
+        submitLabel: isEdit ? 'Save' : 'Create',
+        onSubmit: async () => {
+          const scopeVal = modalBody.querySelector('#mm-scope').value;
+          const keyVal = modalBody.querySelector('#mm-key').value.trim();
+          const valueVal = modalBody.querySelector('#mm-value').value.trim();
+          if (!isEdit && !/^[a-z0-9_-]{1,64}$/.test(keyVal)) { markFieldError('mm-key'); return true; }
+          if (!valueVal) { toast('value is required', 'err'); return true; }
+          clearFieldErrors();
+          try {
+            await postJson('/api/memory', { scope: scopeVal, key: keyVal, value: valueVal });
+            toast((isEdit ? 'updated ' : 'created ') + scopeVal + '/' + keyVal, 'ok');
+            activeMemoryScope = scopeVal;
+            renderScopeFilter();
+            await loadMemories();
+          } catch (e) {
+            toast(e.message, 'err');
+            return true;
+          }
+        },
+      });
+    }
+    document.getElementById('memories-new').addEventListener('click', () => openMemoryModal(null));
+    document.getElementById('memories-refresh').addEventListener('click', () => loadMemories());
+
     // ───── usage ─────
     async function loadUsage(){
       const wrap = document.getElementById('usage-wrap');
@@ -1777,7 +1933,8 @@ export function dashboardHtml(token) {
       feed: () => { ensureFeed(); renderFeed(); },
       inbox: loadInbox,
       calendar: loadCalendar,
-      memory: loadMemory,
+      vault: loadMemory,
+      memories: loadMemories,
       subagents: loadSubagents,
       usage: loadUsage,
       audit: loadAudit,

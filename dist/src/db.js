@@ -173,6 +173,18 @@ function applySchema(db) {
     CREATE INDEX IF NOT EXISTS idx_mc_source ON memory_chunks(source_kind, source_ref);
     CREATE INDEX IF NOT EXISTS idx_mc_mtime ON memory_chunks(source_kind, mtime);
 
+    CREATE TABLE IF NOT EXISTS system_memories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scope TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+      UNIQUE(scope, key)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_scope_updated ON system_memories(scope, updated_at DESC);
+
     CREATE TABLE IF NOT EXISTS subagent_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       chat_id TEXT,
@@ -249,6 +261,8 @@ function applySchema(db) {
       in_inbox INTEGER NOT NULL DEFAULT 1,
       importance INTEGER,
       importance_reason TEXT,
+      topic TEXT,
+      labels_snapshot TEXT,
       classified_at INTEGER,
       created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
     );
@@ -297,6 +311,10 @@ function applySchema(db) {
         db.exec(`ALTER TABLE gmail_items ADD COLUMN importance_reason TEXT`);
     if (!gmailCols.includes('classified_at'))
         db.exec(`ALTER TABLE gmail_items ADD COLUMN classified_at INTEGER`);
+    if (!gmailCols.includes('topic'))
+        db.exec(`ALTER TABLE gmail_items ADD COLUMN topic TEXT`);
+    if (!gmailCols.includes('labels_snapshot'))
+        db.exec(`ALTER TABLE gmail_items ADD COLUMN labels_snapshot TEXT`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_gmail_importance ON gmail_items(importance DESC, internal_date DESC)`);
     const taskCols = db.prepare(`PRAGMA table_info(tasks_items)`).all().map(r => r.name);
     if (!taskCols.includes('importance'))
@@ -574,31 +592,89 @@ export function upsertGmailItem(item) {
 export function listGmailSince(sinceMs, limit = 20) {
     return getDb()
         .prepare(`SELECT id, thread_id, sender, subject, snippet, internal_date, labels, unread,
-              in_inbox, importance, importance_reason, classified_at, created_at
-       FROM gmail_items WHERE internal_date >= ? ORDER BY internal_date DESC LIMIT ?`)
+              in_inbox, importance, importance_reason, topic, labels_snapshot, classified_at,
+              created_at FROM gmail_items WHERE internal_date >= ? ORDER BY internal_date DESC LIMIT ?`)
         .all(sinceMs, limit);
 }
 export function listGmailUnclassified(limit = 25) {
     return getDb()
         .prepare(`SELECT id, thread_id, sender, subject, snippet, internal_date, labels, unread,
-              in_inbox, importance, importance_reason, classified_at, created_at
-       FROM gmail_items WHERE importance IS NULL
+              in_inbox, importance, importance_reason, topic, labels_snapshot, classified_at,
+              created_at FROM gmail_items WHERE importance IS NULL
        ORDER BY internal_date DESC LIMIT ?`)
         .all(limit);
 }
 export function topGmailByImportance(sinceMs, limit = 10) {
     return getDb()
         .prepare(`SELECT id, thread_id, sender, subject, snippet, internal_date, labels, unread,
-              in_inbox, importance, importance_reason, classified_at, created_at
+              in_inbox, importance, importance_reason, topic, labels_snapshot, classified_at, created_at
        FROM gmail_items
        WHERE internal_date >= ? AND importance IS NOT NULL
        ORDER BY importance DESC, internal_date DESC LIMIT ?`)
         .all(sinceMs, limit);
 }
+export function listGmailLabelChanged(limit = 25) {
+    return getDb()
+        .prepare(`SELECT id, thread_id, sender, subject, snippet, internal_date, labels, unread,
+              in_inbox, importance, importance_reason, topic, labels_snapshot, classified_at, created_at
+       FROM gmail_items
+       WHERE importance IS NOT NULL
+         AND labels IS NOT NULL
+         AND (labels_snapshot IS NULL OR labels_snapshot != labels)
+       ORDER BY internal_date DESC LIMIT ?`)
+        .all(limit);
+}
 export function markGmailImportance(id, importance, reason) {
+    markGmailClassified(id, importance, reason);
+}
+export function markGmailClassified(id, importance, reason, topic, labelsSnapshot) {
+    const normalizedImportance = Math.max(1, Math.min(5, Math.round(importance)));
+    const normalizedTopic = topic?.replace(/\s+/g, ' ').trim().slice(0, 80) || null;
     getDb()
-        .prepare(`UPDATE gmail_items SET importance = ?, importance_reason = ?, classified_at = strftime('%s','now') * 1000 WHERE id = ?`)
-        .run(Math.max(0, Math.min(100, Math.round(importance))), reason.slice(0, 240), id);
+        .prepare(`UPDATE gmail_items
+       SET importance = ?,
+           importance_reason = ?,
+           topic = ?,
+           labels_snapshot = COALESCE(?, labels),
+           classified_at = strftime('%s','now') * 1000
+       WHERE id = ?`)
+        .run(normalizedImportance, reason.slice(0, 240), normalizedTopic, labelsSnapshot ?? null, id);
+}
+export function listMemories(scope) {
+    if (scope) {
+        return getDb()
+            .prepare(`SELECT id, scope, key, value, created_at, updated_at
+         FROM system_memories WHERE scope = ? ORDER BY updated_at DESC`)
+            .all(scope);
+    }
+    return getDb()
+        .prepare(`SELECT id, scope, key, value, created_at, updated_at
+       FROM system_memories ORDER BY scope ASC, updated_at DESC`)
+        .all();
+}
+export function getMemory(scope, key) {
+    const row = getDb()
+        .prepare(`SELECT id, scope, key, value, created_at, updated_at
+       FROM system_memories WHERE scope = ? AND key = ?`)
+        .get(scope, key);
+    return row ?? null;
+}
+export function upsertMemory(scope, key, value) {
+    getDb()
+        .prepare(`INSERT INTO system_memories (scope, key, value, updated_at)
+       VALUES (?, ?, ?, strftime('%s','now') * 1000)
+       ON CONFLICT(scope, key) DO UPDATE SET
+         value=excluded.value,
+         updated_at=strftime('%s','now') * 1000`)
+        .run(scope, key, value);
+    const row = getMemory(scope, key);
+    if (!row)
+        throw new Error('memory upsert failed');
+    return row;
+}
+export function deleteMemory(scope, key) {
+    const info = getDb().prepare(`DELETE FROM system_memories WHERE scope = ? AND key = ?`).run(scope, key);
+    return info.changes > 0;
 }
 export function upsertCalendarEvent(ev) {
     getDb()
