@@ -107,12 +107,15 @@ All defined in `src/scheduler.ts:BUILT_INS`, implemented in `src/missions/*.ts`.
 
 ## Dashboard
 
-Runs on `http://127.0.0.1:3141/?token=<DASHBOARD_TOKEN>`. Seven tabs:
+Runs on `http://127.0.0.1:3141/?token=<DASHBOARD_TOKEN>`. Eleven tabs:
 
 - **Overview** — pid, uptime, conversation rows, memory chunks, recent token usage
 - **Scheduler** — every cron task with next run + last result + status pill
 - **Missions** — ad-hoc + cron mission queue with result and started-at
 - **Memories** — recent indexed chunks with source path and preview
+- **Gmail** — last 50 ingested messages with importance scores + unread state
+- **Calendar** — events from -6h through +48h (configurable window)
+- **Tasks** — Google Tasks state, local queue + synced, ordered by status and due date
 - **Subagents** — every dispatch with mode, role, backend, judge, duration, outcome
 - **Routing** — per-role aggregates (runs / ok / err / ok% / avg ms) over a rolling window
 - **Audit** — PIN attempts, blocks, exfil hits, command events

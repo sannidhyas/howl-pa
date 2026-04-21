@@ -60,6 +60,9 @@ export function dashboardHtml(token: string): string {
     <button data-tab="scheduler">Scheduler</button>
     <button data-tab="missions">Missions</button>
     <button data-tab="memories">Memories</button>
+    <button data-tab="gmail">Gmail</button>
+    <button data-tab="calendar">Calendar</button>
+    <button data-tab="tasks">Tasks</button>
     <button data-tab="subagents">Subagents</button>
     <button data-tab="roles">Routing</button>
     <button data-tab="audit">Audit</button>
@@ -82,6 +85,18 @@ export function dashboardHtml(token: string): string {
     <section id="memories">
       <div class="hint">Recent chunks indexed into the vector store.</div>
       <table id="memory-table"></table>
+    </section>
+    <section id="gmail">
+      <div class="hint">Last 50 ingested messages, scored by LLM importance (higher = more urgent).</div>
+      <table id="gmail-table"></table>
+    </section>
+    <section id="calendar">
+      <div class="hint">Events from the last 6 hours through the next 48 (change with ?hours=N on /api/calendar).</div>
+      <table id="calendar-table"></table>
+    </section>
+    <section id="tasks">
+      <div class="hint">Google Tasks — local queue + synced. needs_push rows are waiting for OAuth to land.</div>
+      <table id="tasks-table"></table>
     </section>
     <section id="subagents">
       <div class="hint">Per-run telemetry for Claude / Codex / Ollama dispatches.</div>
@@ -171,6 +186,45 @@ export function dashboardHtml(token: string): string {
         r => '<tr><td>'+r.source_kind+'</td><td class="mono truncate">'+r.source_ref+'</td><td class="right">'+r.chunk_idx+'</td><td class="truncate">'+(r.preview||'').replace(/[<>]/g, m=>({ '<':'&lt;','>':'&gt;' }[m]))+'</td><td class="mono">'+fmtRel(r.mtime)+'</td><td class="mono">'+fmtRel(r.created_at)+'</td></tr>'
       );
     }
+    async function loadGmail(){
+      const { rows } = await j('/api/gmail');
+      document.getElementById('gmail-table').innerHTML = tableHtml(
+        ['When','Sender','Subject','Snippet','Imp','Unread'],
+        rows,
+        r => {
+          const imp = r.importance != null ? r.importance : '—';
+          const unread = r.unread ? 'YES' : '';
+          const subj = (r.subject||'').replace(/[<>]/g, m=>({ '<':'&lt;','>':'&gt;' }[m]));
+          const snip = (r.snippet||'').slice(0,140).replace(/[<>]/g, m=>({ '<':'&lt;','>':'&gt;' }[m]));
+          return '<tr><td class="mono">'+fmtRel(r.internal_date)+'</td><td class="mono truncate">'+(r.sender||'—')+'</td><td class="truncate">'+subj+'</td><td class="truncate muted">'+snip+'</td><td class="right">'+imp+'</td><td class="'+(r.unread?'bad':'muted')+'">'+unread+'</td></tr>';
+        }
+      );
+    }
+    async function loadCalendar(){
+      const { rows } = await j('/api/calendar');
+      document.getElementById('calendar-table').innerHTML = tableHtml(
+        ['Starts','Ends','Summary','Location','Meet','Attendees'],
+        rows,
+        r => {
+          const summ = (r.summary||'(no title)').replace(/[<>]/g, m=>({ '<':'&lt;','>':'&gt;' }[m]));
+          const meet = r.meet_link ? '<a href="'+r.meet_link+'" target="_blank">join</a>' : '—';
+          const att = r.attendees ? String(r.attendees).split(',').length : 0;
+          return '<tr><td class="mono">'+fmtTs(r.starts_at)+'</td><td class="mono">'+fmtTs(r.ends_at)+'</td><td>'+summ+'</td><td class="muted truncate">'+(r.location||'—')+'</td><td class="mono">'+meet+'</td><td class="right">'+att+'</td></tr>';
+        }
+      );
+    }
+    async function loadTasks(){
+      const { rows } = await j('/api/tasks');
+      document.getElementById('tasks-table').innerHTML = tableHtml(
+        ['Status','Title','Due','Imp','List','Updated'],
+        rows,
+        r => {
+          const title = (r.title||'').replace(/[<>]/g, m=>({ '<':'&lt;','>':'&gt;' }[m]));
+          const imp = r.importance != null ? r.importance : '—';
+          return '<tr><td>'+pill(r.status)+'</td><td>'+title+'</td><td class="mono">'+fmtTs(r.due_ts)+'</td><td class="right">'+imp+'</td><td class="mono muted">'+(r.list_id||'—')+'</td><td class="mono">'+fmtRel(r.updated_at)+'</td></tr>';
+        }
+      );
+    }
     async function loadSubagents(){
       const { rows } = await j('/api/subagents');
       document.getElementById('subagent-table').innerHTML = tableHtml(
@@ -219,6 +273,9 @@ export function dashboardHtml(token: string): string {
       scheduler: loadSched,
       missions: loadMissions,
       memories: loadMemory,
+      gmail: loadGmail,
+      calendar: loadCalendar,
+      tasks: loadTasks,
       subagents: loadSubagents,
       roles: loadRoles,
       audit: loadAudit,

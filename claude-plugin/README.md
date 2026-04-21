@@ -10,10 +10,13 @@ Slash commands:
 - `/howl-schedule` — all scheduled missions with next run + last result
 - `/howl-recall [limit]` — recent memory chunks (vault + conversation)
 - `/howl-routing [hours]` — subagent routing stats by role (codex-corps taxonomy)
+- `/howl-gmail` — last 50 ingested Gmail messages with importance scores
+- `/howl-calendar [hours]` — upcoming Calendar events
+- `/howl-tasks` — Google Tasks (local queue + synced)
 
 MCP tools (callable directly by any CC session or agent):
 
-- `howl_status`, `howl_schedule_list`, `howl_recall`, `howl_subagents`, `howl_routing_stats`, `howl_audit`
+- `howl_status`, `howl_schedule_list`, `howl_recall`, `howl_subagents`, `howl_routing_stats`, `howl_audit`, `howl_gmail`, `howl_calendar`, `howl_tasks`
 
 ## Requirements
 

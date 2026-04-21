@@ -51,6 +51,25 @@ const TOOLS = [
     description: 'Recent audit-log entries (PIN attempts, blocks, exfil hits, commands).',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
+  {
+    name: 'howl_gmail',
+    description: 'Last 50 ingested Gmail messages with importance scores.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'howl_calendar',
+    description: 'Upcoming Calendar events from -6h through +N hours (default 48).',
+    inputSchema: {
+      type: 'object',
+      properties: { hours: { type: 'number', description: 'Look-ahead window in hours (default 48)' } },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'howl_tasks',
+    description: 'Google Tasks — local queue plus synced rows, ordered by status and due date.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
 ]
 
 async function fetchJson(path) {
@@ -81,6 +100,14 @@ async function callTool(name, args) {
     }
     case 'howl_audit':
       return fetchJson('/api/audit')
+    case 'howl_gmail':
+      return fetchJson('/api/gmail')
+    case 'howl_calendar': {
+      const hours = Math.min(Math.max(args?.hours ?? 48, 1), 24 * 30)
+      return fetchJson(`/api/calendar?hours=${hours}`)
+    }
+    case 'howl_tasks':
+      return fetchJson('/api/tasks')
     default:
       throw new Error(`unknown tool: ${name}`)
   }

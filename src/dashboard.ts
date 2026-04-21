@@ -169,6 +169,53 @@ function buildApp(): Hono {
     })
   })
 
+  app.get('/api/gmail', c => {
+    const gate = requireToken(c)
+    if (gate) return gate
+    return c.json({
+      rows: rows(
+        `SELECT id, sender, subject, snippet, internal_date, unread, importance, importance_reason, classified_at
+         FROM gmail_items
+         ORDER BY internal_date DESC LIMIT 50`
+      ),
+    })
+  })
+
+  app.get('/api/calendar', c => {
+    const gate = requireToken(c)
+    if (gate) return gate
+    const windowHours = Number.parseInt(c.req.query('hours') ?? '48', 10) || 48
+    const from = Date.now() - 6 * 3600 * 1000
+    const to = Date.now() + windowHours * 3600 * 1000
+    return c.json({
+      from,
+      to,
+      hours: windowHours,
+      rows: rows(
+        `SELECT id, summary, location, starts_at, ends_at, html_link, meet_link, attendees
+         FROM calendar_events
+         WHERE starts_at BETWEEN ? AND ?
+         ORDER BY starts_at ASC`,
+        from,
+        to
+      ),
+    })
+  })
+
+  app.get('/api/tasks', c => {
+    const gate = requireToken(c)
+    if (gate) return gate
+    return c.json({
+      rows: rows(
+        `SELECT id, list_id, title, notes, due_ts, status, updated_at, synced_at, importance, importance_reason
+         FROM tasks_items
+         ORDER BY CASE status WHEN 'needs_push' THEN 0 WHEN 'needsAction' THEN 1 ELSE 2 END,
+                  COALESCE(due_ts, updated_at) ASC
+         LIMIT 100`
+      ),
+    })
+  })
+
   app.get('/api/vault-inbox', c => {
     const gate = requireToken(c)
     if (gate) return gate
