@@ -128,7 +128,7 @@ async function dispatch(msg) {
       return reply(id, {
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'howl-pa', version: '0.0.1' },
+        serverInfo: { name: 'howl-pa', version: '0.0.2' },
       })
     }
     if (method === 'tools/list') {

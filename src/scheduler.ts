@@ -30,13 +30,22 @@ let state: { timer: NodeJS.Timeout | null; opts: SchedulerOptions | null } = {
   opts: null,
 }
 
+type Profile = 'neutral' | 'academic' | 'venture'
+
 type BuiltIn = {
   name: string
   mission: string
   schedule: string
   priority: number
+  profiles?: Profile[]
 }
 
+// Profile gating:
+//   - no `profiles` field → runs on every profile
+//   - `profiles` array listed → only runs when HOWL_PROFILE matches one
+//
+// Default HOWL_PROFILE is 'neutral' — minimal surface. Set `academic` to
+// enable thesis-mirror-style flows, `venture` to enable the venture review.
 const BUILT_INS: BuiltIn[] = [
   { name: 'morning-brief', mission: 'morning-brief', schedule: '0 7 * * *', priority: 10 },
   { name: 'morning-ritual', mission: 'morning-ritual', schedule: '5 7 * * *', priority: 9 },
@@ -44,7 +53,7 @@ const BUILT_INS: BuiltIn[] = [
   { name: 'evening-tracker', mission: 'evening-tracker', schedule: '5 21 * * *', priority: 8 },
   { name: 'vault-reindex', mission: 'vault-reindex', schedule: '*/10 * * * *', priority: 1 },
   { name: 'weekly-review', mission: 'weekly-review', schedule: '0 18 * * 0', priority: 5 },
-  { name: 'venture-review', mission: 'venture-review', schedule: '30 18 * * 0', priority: 5 },
+  { name: 'venture-review', mission: 'venture-review', schedule: '30 18 * * 0', priority: 5, profiles: ['venture', 'academic'] },
   { name: 'gmail-poll', mission: 'gmail-poll', schedule: '*/5 * * * *', priority: 2 },
   { name: 'gmail-classify', mission: 'gmail-classify', schedule: '*/7 * * * *', priority: 3 },
   { name: 'calendar-poll', mission: 'calendar-poll', schedule: '*/15 * * * *', priority: 2 },
@@ -52,13 +61,22 @@ const BUILT_INS: BuiltIn[] = [
   { name: 'tasks-push', mission: 'tasks-push', schedule: '*/5 * * * *', priority: 3 },
 ]
 
+function activeProfile(): Profile {
+  const raw = (process.env.HOWL_PROFILE ?? 'neutral').toLowerCase()
+  return raw === 'academic' || raw === 'venture' ? raw : 'neutral'
+}
+
+function builtInsForProfile(profile: Profile): BuiltIn[] {
+  return BUILT_INS.filter(b => !b.profiles || b.profiles.includes(profile))
+}
+
 function nextRunFor(schedule: string, from = new Date()): number {
   return parseExpression(schedule, { currentDate: from }).next().getTime()
 }
 
-function registerBuiltIns(): void {
+function registerBuiltIns(profile: Profile): void {
   const existing = new Map(listScheduledTasks().map(t => [t.name, t]))
-  for (const b of BUILT_INS) {
+  for (const b of builtInsForProfile(profile)) {
     const prev = existing.get(b.name)
     if (prev && prev.schedule === b.schedule) continue
     upsertScheduledTask({
@@ -73,13 +91,17 @@ function registerBuiltIns(): void {
 
 export function initScheduler(opts: SchedulerOptions): void {
   state.opts = opts
-  registerBuiltIns()
+  const profile = activeProfile()
+  registerBuiltIns(profile)
   const recovered = recoverStuckTasks(AGENT_TIMEOUT_MS)
   if (recovered > 0) logger.warn({ recovered }, 'recovered stuck scheduler tasks')
 
   state.timer = setInterval(() => void tick().catch(err => logger.error({ err }, 'tick failed')), TICK_MS)
   state.timer.unref()
-  logger.info({ built_ins: BUILT_INS.map(b => b.name) }, 'scheduler started')
+  logger.info(
+    { profile, built_ins: builtInsForProfile(profile).map(b => b.name) },
+    'scheduler started'
+  )
 }
 
 export function stopScheduler(): void {

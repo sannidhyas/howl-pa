@@ -4,7 +4,14 @@ import { writeIdea } from './vault-writer.js'
 
 const IDEA_TIMEOUT_MS = 180_000
 
-const SYSTEM_CONTEXT = `You are assisting an Information Systems PhD student at IIM A who is pivoting to entrepreneurship post-PhD. Their thesis is on trust in AI and technology. They build with Claude + Codex subscription-only tooling (no Gemini, ElevenLabs, Pika, etc.). Any idea analysis should ground recommendations in this stack and personal context.`
+const USER_CONTEXT = process.env.HOWL_CONTEXT ?? ''
+const SYSTEM_CONTEXT = [
+  'You are assisting an independent operator who captures ideas through a Telegram-first personal assistant.',
+  'They work with Claude + Codex subscription-only tooling and deliberately avoid paid external APIs',
+  '(Gemini, ElevenLabs, Pika, hosted vector DBs, etc.). Ground every recommendation in that stack; prefer',
+  'local or free dependencies.',
+  USER_CONTEXT ? `Additional personal context from the user: ${USER_CONTEXT}` : '',
+].filter(Boolean).join(' ')
 
 const IDEA_PROMPT = `Produce a structured venture run-down in STRICT markdown. Sections MUST appear in this order and use the exact headings shown. No preamble, no closing remarks.
 

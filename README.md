@@ -34,9 +34,11 @@ Then DM your bot on Telegram. See [`docs/install.md`](./docs/install.md) for the
 
 ## Docs
 
-- [Install guide](./docs/install.md) — npm, CC plugin, both paths
+- [Setup guide](./docs/setup-guide.md) — step-by-step from zero: every credential, where to get it, what to paste where
+- [Install guide](./docs/install.md) — npm, CC plugin, source
 - [User guide](./docs/user-guide.md) — every Telegram command, every mission, every dashboard tab
 - [Features — current + planned](./docs/features.md) — what ships today, what's on the roadmap
+- [Customization](./docs/customization.md) — where to edit to make the bot match your own workflow (daily frontmatter, ritual questions, vault folders, missions)
 - [3-device workflow](./docs/3-device-workflow.md) — the mental model the bot is built around
 - [Vault conventions](./docs/vault-conventions.md) — what folders the bot owns vs what you own
 - [Ritual protocols](./docs/ritual-protocols.md) — the scheduled surveys that run every day

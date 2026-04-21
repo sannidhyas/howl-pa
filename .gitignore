@@ -6,3 +6,14 @@ store/
 *.log
 .DS_Store
 .tsbuildinfo
+
+# Machine-local state — never commit
+.planning/codebase/
+.planning/intel/
+.codex
+.agents/
+vendor/
+
+# Howl PA runtime config (user-specific)
+.claudeclaw/
+howl-pa-*.tgz

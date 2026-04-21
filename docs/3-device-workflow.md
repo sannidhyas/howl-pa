@@ -1,6 +1,6 @@
 # The 3-device workflow
 
-Howl PA is built around a single assumption: you use exactly three surfaces for knowledge work, and each of them has one job.
+Howl PA is built around a single assumption: three surfaces for knowledge work, one job each.
 
 | Device | Surface | Role |
 |---|---|---|
@@ -10,21 +10,21 @@ Howl PA is built around a single assumption: you use exactly three surfaces for 
 
 ## Phone — Telegram bot
 
-- Inbound: voice-to-text, photo, text. Everything gets classified and routed to a vault path.
-- Outbound: the bot does not send you reminders. It creates Google Calendar events and Google Tasks, and you receive notifications from the native Google apps. That is the single notification surface.
-- Commands live in `src/bot.ts` (`/start`, `/status`, `/capture`, `/note`, `/idea`, `/task`, `/task-add`, `/task-list`, `/task-done`, `/thesis`, `/literature`, `/journal`, `/nudge`, `/schedule`, `/mission`, `/brief`, `/help`, `/ask`, `/council`, `/backends`, `/ideas`, `/open`, `/discard`, `/lock`, `/chatid`, `/recall`, `/reindex`, `/mirror-thesis`).
+- Inbound: text, voice, photo. Everything gets classified and routed to a vault path.
+- Outbound: the bot does not send reminders. It creates Google Calendar events and Google Tasks; your phone's native Google apps do the nudging. That is the single notification surface.
+- Commands live in `src/bot.ts` — see [user-guide.md](./user-guide.md) for the full list.
 
 ## Laptop — Claude Code
 
 - Every piece of real work — research, code, writing, planning — runs inside a Claude Code session.
-- The subagent router (`src/subagent/router.ts`) mirrors the codex-corps 19-role taxonomy. Non-frontend code goes to Codex, design goes to Claude, council mode brings Ollama in.
-- The `project-seeding` skill at `.claude/skills/project-seeding/SKILL.md` is the gate for non-trivial work: two-pass forward/backward first-principles planning before any code is written.
+- The subagent router (`src/subagent/router.ts`) mirrors the codex-corps 19-role taxonomy. Non-frontend coding routes to Codex, design routes to Claude, council mode brings Ollama in.
+- The `project-seeding` skill (shipped with the CC plugin) gates non-trivial work behind a two-pass first-principles planning protocol before code is written.
 
 ## Anywhere — Obsidian
 
-- The vault at `VAULT_PATH` (default `~/Documents/projecthowl`) is the second brain.
-- The bot inherits vault conventions (see [vault-conventions.md](./vault-conventions.md)); it never invents folders.
-- All bot writes are committed with a `[mc] <op>: <path>` message so obsidian-git stays clean.
+- The vault at `VAULT_PATH` is the second brain.
+- The bot inherits vault conventions (see [vault-conventions.md](./vault-conventions.md)) — it does not invent new folders.
+- All bot writes commit with `[mc] <op>: <path>` so obsidian-git stays clean.
 
 ## What the bot does not do
 

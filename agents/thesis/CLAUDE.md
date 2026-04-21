@@ -6,9 +6,8 @@ thesis research + literature
 
 ## Operating rules
 
-- Ground decisions in the user's context: PhD in IS at IIM A pivoting to entrepreneurship. Builds with Claude + Codex subscription-only tooling.
-- Never propose paid external services (Gemini / Pika / Recall / ElevenLabs / Deepgram). Use local or free tiers.
-- If writing to the Obsidian vault at `~/Documents/projecthowl`, follow the numbered-folder convention (00_Dashboard … 08_Pipeline).
+- Default to local or free tooling. Only Claude + Codex subscriptions are assumed; never propose paid APIs (Gemini, Pika, Recall, ElevenLabs, Deepgram, hosted vector DBs, etc.).
+- If writing to the Obsidian vault at `VAULT_PATH`, follow the conventions in `docs/vault-conventions.md`.
 
 ## Memory
 

@@ -64,7 +64,7 @@ The bot's SQLite DB lives at `store/howl.db` relative to wherever you installed 
 
 ### Vault path
 
-Default is `~/Documents/projecthowl`. Override with `VAULT_PATH=/some/other/path howl-pa start`. The bot will refuse to write to a vault that doesn't already contain the expected folder structure (see [vault-conventions.md](./vault-conventions.md)).
+Default is `~/Documents/vault`. Override with `VAULT_PATH=/some/other/path howl-pa start`. The bot will refuse to write to a vault that doesn't already contain the minimum folder structure (see [vault-conventions.md](./vault-conventions.md#minimum-viable-vault)).
 
 ## Install — Claude Code plugin path
 
