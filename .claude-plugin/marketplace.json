@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "howl-pa",
-      "version": "0.0.6",
+      "version": "0.0.7",
       "source": "./claude-plugin",
       "description": "Claude Code companion for a running Howl PA bot. MCP tools + /howl-* slash commands that expose scheduler, memory, and subagent routing telemetry."
     }

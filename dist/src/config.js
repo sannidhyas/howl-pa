@@ -79,7 +79,7 @@ function resolveConfigDir() {
 }
 export const CLAUDECLAW_CONFIG = resolveConfigDir();
 export const VAULT_PATH = expandPath(optional('VAULT_PATH', '~/Documents/vault')) ?? '~/Documents/vault';
-export const STORE_DIR = join(PROJECT_ROOT, 'store');
+export const STORE_DIR = join(CLAUDECLAW_CONFIG, 'store');
 export const DB_PATH = join(STORE_DIR, 'howl.db');
 export const LOCK_PATH = join(STORE_DIR, 'claudeclaw.pid');
 // Observability

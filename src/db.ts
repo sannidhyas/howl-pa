@@ -1,13 +1,58 @@
 import { DatabaseSync } from 'node:sqlite'
-import { mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
-import { DB_PATH } from './config.js'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+} from 'node:fs'
+import { dirname, join } from 'node:path'
+import { DB_PATH, PROJECT_ROOT, STORE_DIR } from './config.js'
 import { logger } from './logger.js'
 
 let db: DatabaseSync | null = null
 
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error
+}
+
+function copyDirectorySync(src: string, dest: string): void {
+  mkdirSync(dest, { recursive: true })
+
+  for (const entry of readdirSync(src, { withFileTypes: true })) {
+    const srcPath = join(src, entry.name)
+    const destPath = join(dest, entry.name)
+
+    if (entry.isDirectory()) {
+      copyDirectorySync(srcPath, destPath)
+      continue
+    }
+
+    if (!entry.isFile()) {
+      continue
+    }
+
+    copyFileSync(srcPath, destPath)
+  }
+}
+
 export function initDatabase(): DatabaseSync {
   if (db) return db
+
+  const legacyStoreDir = join(PROJECT_ROOT, 'store')
+  if (existsSync(join(legacyStoreDir, 'howl.db')) && !existsSync(DB_PATH)) {
+    mkdirSync(dirname(STORE_DIR), { recursive: true })
+    try {
+      renameSync(legacyStoreDir, STORE_DIR)
+    } catch (error) {
+      if (!isNodeError(error) || error.code !== 'EXDEV') throw error
+      copyDirectorySync(legacyStoreDir, STORE_DIR)
+      rmSync(legacyStoreDir, { recursive: true })
+    }
+    logger.warn({ src: legacyStoreDir, dest: STORE_DIR }, 'migrated legacy store')
+  }
+
   mkdirSync(dirname(DB_PATH), { recursive: true })
   db = new DatabaseSync(DB_PATH)
   db.exec('PRAGMA journal_mode = WAL')
