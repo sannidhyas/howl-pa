@@ -1,6 +1,6 @@
 {
   "name": "howl-pa",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Claude Code companion for Howl PA. Exposes the running bot's state (scheduler, subagent telemetry, memory, audit) to any CC session via MCP tools and /howl-* slash commands.",
   "author": {
     "name": "Sannidhya Sandheer",

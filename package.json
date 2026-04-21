@@ -1,6 +1,6 @@
 {
   "name": "howl-pa",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Howl PA — personal Mission Control. Telegram-first assistant that maintains an Obsidian vault, ingests Gmail/Calendar/Google Tasks, and spawns Codex or Claude subagents.",
   "type": "module",
   "license": "MIT",

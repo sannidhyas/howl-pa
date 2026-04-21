@@ -77,7 +77,10 @@ The installer walks you through consent and persists the refresh token. You do *
 ## 4. Run the installer
 
 ```sh
-npm i -g https://github.com/sannidhyas/howl-pa/releases/latest/download/howl-pa.tgz
+npm i -g howl-pa
+
+# fallback for air-gapped / registry-unreachable environments:
+# npm i -g https://github.com/sannidhyas/howl-pa/releases/latest/download/howl-pa.tgz
 howl-pa setup
 ```
 
@@ -187,7 +190,7 @@ Then inside any CC session: `/howl-status`, `/howl-gmail`, `/howl-calendar`, `/h
 ## Upgrading
 
 ```sh
-npm i -g github:sannidhyas/howl-pa
+npm i -g howl-pa@latest
 ```
 
 DB migrations run on next start. Your `.env` and vault are not touched.

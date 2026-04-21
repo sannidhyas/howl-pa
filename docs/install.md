@@ -18,7 +18,14 @@ Two install paths. They compose — most users want both.
 
 ## Install — npm path
 
-Published npm package (`npm i -g howl-pa`) is pending owner's `npm publish`. Until then install the release tarball:
+Install the published npm package:
+
+```sh
+npm i -g howl-pa
+howl-pa setup
+```
+
+Fallback for air-gapped / registry-unreachable environments:
 
 ```sh
 npm i -g https://github.com/sannidhyas/howl-pa/releases/latest/download/howl-pa.tgz

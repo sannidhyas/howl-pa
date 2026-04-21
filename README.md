@@ -1,5 +1,14 @@
 # Howl PA
 
+> **Install in 4 commands**
+>
+> ```sh
+> npm i -g howl-pa
+> howl-pa setup
+> howl-pa setup:google
+> howl-pa start
+> ```
+
 Personal Mission Control. One assistant across three surfaces:
 
 - **Phone** — Telegram bot for capture + native Google notifications
@@ -10,15 +19,16 @@ Telegram captures everything, classifies it, writes to the right Obsidian path, 
 
 ## Status
 
-v0.0.1. Runs daily against a real workload. Ships as both an npm package and a Claude Code plugin.
+v0.0.8. Runs daily against a real workload. Ships as both an npm package and a Claude Code plugin.
 
 ## Quickstart
 
 ```sh
-# 1. Install the release tarball directly. (This works around an npm
-#    git-install filesystem race seen on Fedora/Bluefin — the tarball
-#    avoids it entirely.)
-npm i -g https://github.com/sannidhyas/howl-pa/releases/latest/download/howl-pa.tgz
+# 1. Install from npm
+npm i -g howl-pa
+
+# fallback for air-gapped / registry-unreachable environments:
+# npm i -g https://github.com/sannidhyas/howl-pa/releases/latest/download/howl-pa.tgz
 
 # 2. First-run wizard (PIN, kill phrase, Telegram bot token, chat allowlist)
 howl-pa setup
@@ -29,8 +39,6 @@ howl-pa setup:google
 # 4. Start the bot + scheduler + dashboard
 howl-pa start
 ```
-
-Once the package is pushed to the npm registry, `npm i -g howl-pa` will work as well.
 
 Then DM your bot on Telegram. See [`docs/install.md`](./docs/install.md) for the full flow, including Claude Code plugin install.
 
