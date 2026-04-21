@@ -4,7 +4,16 @@ import { streamSSE } from 'hono/streaming';
 import { createHmac, createHash, timingSafeEqual as tseq } from 'node:crypto';
 import CronParserModule from 'cron-parser';
 const { parseExpression } = CronParserModule;
-import { ALLOWED_CHAT_ID, DASHBOARD_HOST, DASHBOARD_USERNAME, DASHBOARD_PASSWORD_HASH, DASHBOARD_SESSION_SECRET, } from './config.js';
+import { ALLOWED_CHAT_ID, DASHBOARD_HOST, DASHBOARD_USERNAME as DASHBOARD_USERNAME_DEFAULT, DASHBOARD_PASSWORD_HASH as DASHBOARD_PASSWORD_HASH_BOOT, DASHBOARD_SESSION_SECRET, } from './config.js';
+// Read these env vars live on every request so `howl-pa set-password`
+// (or a manual .env edit + Node process.env update) takes effect without
+// a daemon restart. Fall back to the values captured at boot.
+function liveUsername() {
+    return process.env.DASHBOARD_USERNAME ?? DASHBOARD_USERNAME_DEFAULT;
+}
+function livePasswordHash() {
+    return process.env.DASHBOARD_PASSWORD_HASH ?? DASHBOARD_PASSWORD_HASH_BOOT;
+}
 import { getDb, audit, setTaskStatus, deleteScheduledTask, enqueueMission, updateMissionTaskStatus, updateScheduledFields, upsertScheduledTask, listMemories, getMemory, upsertMemory, deleteMemory, } from './db.js';
 import { logger } from './logger.js';
 import { startMission } from './missions/runner.js';
@@ -83,7 +92,7 @@ function verifySession(cookie) {
     const ts = Number(cookie.slice(0, dot));
     if (!Number.isFinite(ts) || Date.now() - ts > SESSION_TTL_MS)
         return false;
-    const expected = signSession(ts, DASHBOARD_USERNAME);
+    const expected = signSession(ts, liveUsername());
     const a = Buffer.from(cookie);
     const b = Buffer.from(expected);
     if (a.length !== b.length)
@@ -100,13 +109,14 @@ function hashPassword(password) {
     return createHash('sha256').update(`${salt}:${password}`).digest('hex');
 }
 function verifyPassword(username, password) {
-    if (!DASHBOARD_PASSWORD_HASH)
+    const expectedHash = livePasswordHash();
+    if (!expectedHash)
         return false;
-    if (username !== DASHBOARD_USERNAME)
+    if (username !== liveUsername())
         return false;
     const hash = hashPassword(password);
     const a = Buffer.from(hash);
-    const b = Buffer.from(DASHBOARD_PASSWORD_HASH);
+    const b = Buffer.from(expectedHash);
     if (a.length !== b.length)
         return false;
     try {
@@ -216,7 +226,8 @@ function one(sql, ...args) {
         .get(...args);
 }
 function loginHtml() {
-    const hasPassword = !!DASHBOARD_PASSWORD_HASH;
+    const hasPassword = !!livePasswordHash();
+    const usernameNow = liveUsername();
     return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -247,7 +258,7 @@ function loginHtml() {
   ${hasPassword ? `
   <form id="pwform">
     <label for="u">Username</label>
-    <input id="u" name="username" autocomplete="username" value="${DASHBOARD_USERNAME}" spellcheck="false" />
+    <input id="u" name="username" autocomplete="username" value="${usernameNow}" spellcheck="false" />
     <label for="p">Password</label>
     <input id="p" name="password" type="password" autocomplete="current-password" />
     <div class="err" id="pwerr" style="display:none">Invalid credentials. Try again.</div>
@@ -1125,7 +1136,7 @@ export function startDashboard() {
         logger.warn('DASHBOARD_TOKEN not set — dashboard disabled. `npm run setup` to add.');
         return;
     }
-    if (DASHBOARD_HOST !== '127.0.0.1' && !DASHBOARD_PASSWORD_HASH) {
+    if (DASHBOARD_HOST !== '127.0.0.1' && !livePasswordHash()) {
         logger.warn({ host: DASHBOARD_HOST }, 'dashboard is open to non-localhost with no password — set DASHBOARD_PASSWORD_HASH via setup');
     }
     const app = buildApp();
