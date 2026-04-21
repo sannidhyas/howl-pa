@@ -3,6 +3,7 @@ import { logger } from './logger.js'
 import { writeJournal, writeLiterature, writeNote, writeTask, writeThesisFragment } from './vault-writer.js'
 import { runIdeaFlow } from './idea-flow.js'
 import { upsertTask } from './tasks.js'
+import { listMemories } from './db.js'
 
 export type CaptureType =
   | 'note'
@@ -39,8 +40,15 @@ Type rules:
 
 Return ONLY the JSON. Do not wrap in code fences. No explanation.`
 
+function renderCaptureHints(): string {
+  return listMemories('capture_hint').map(m => `${m.key}: ${m.value}`).join('\n')
+}
+
 export async function classifyCapture(text: string): Promise<Classification | null> {
-  const prompt = `${CLASSIFIER_PROMPT}\n\nMessage:\n${text}`
+  const hints = renderCaptureHints()
+  const prompt = hints
+    ? `${CLASSIFIER_PROMPT}\n\nUser capture hints:\n${hints}\n\nMessage:\n${text}`
+    : `${CLASSIFIER_PROMPT}\n\nMessage:\n${text}`
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), CLASSIFY_TIMEOUT_MS)
   timer.unref()

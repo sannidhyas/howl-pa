@@ -20,7 +20,11 @@ import {
   latestSessionFor,
   listMissionTasks,
   listScheduledTasks,
+  listMemories,
+  getMemory,
   setTaskStatus,
+  upsertMemory,
+  deleteMemory,
 } from './db.js'
 import { BUILT_INS, scheduledTaskSummary, type BuiltIn } from './scheduler.js'
 import { executeMission } from './missions/runner.js'
@@ -60,6 +64,48 @@ const ROUTINE_GROUPS: { title: string; names: string[] }[] = [
   { title: 'Weekly', names: ['weekly-review', 'venture-review'] },
   { title: 'Vault', names: ['vault-reindex'] },
 ]
+
+const VALID_MEMORY_SCOPES = ['global', 'email_hint', 'task_hint', 'agent_hint', 'capture_hint', 'journal_hint'] as const
+type MemoryScope = typeof VALID_MEMORY_SCOPES[number]
+const MEMORY_KEY_RE = /^[a-z0-9_-]{1,64}$/
+
+function isValidMemoryScope(value: unknown): value is MemoryScope {
+  return typeof value === 'string' && VALID_MEMORY_SCOPES.includes(value as MemoryScope)
+}
+
+function memoryUsage(): string {
+  return `usage: /memory | /memory add [scope] <key> <value...> | /memory del <scope> <key> | /memory show <scope> <key>\nscopes: ${VALID_MEMORY_SCOPES.join(', ')}`
+}
+
+function truncateMemoryValue(value: string, max = 80): string {
+  const clean = value.replace(/\s+/g, ' ').trim()
+  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean
+}
+
+function formatMemoryList(): string {
+  const rows = listMemories()
+  if (rows.length === 0) return '<b>System memories</b>\n<i>none</i>'
+
+  const grouped = new Map<string, typeof rows>()
+  for (const row of rows) {
+    const bucket = grouped.get(row.scope)
+    if (bucket) bucket.push(row)
+    else grouped.set(row.scope, [row])
+  }
+
+  const sections = [...grouped.entries()].map(([scope, scopeRows]) => {
+    const lines = scopeRows.map(row =>
+      `• <code>${escapeHtml(row.key)}</code> — ${escapeHtml(truncateMemoryValue(row.value))}`
+    )
+    return `<b>${escapeHtml(scope)}</b>\n${lines.join('\n')}`
+  })
+  return `<b>System memories</b>\n\n${sections.join('\n\n')}`
+}
+
+function validateMemoryKey(key: string | undefined): string | null {
+  if (!key || !MEMORY_KEY_RE.test(key)) return null
+  return key
+}
 
 function formatRoutineLine(task: BuiltIn, status: string | undefined): string {
   const paused = status === 'paused' ? ' (paused)' : ''
@@ -239,6 +285,72 @@ async function handleCommand(ctx: Context, text: string): Promise<boolean> {
         return true
       }
       await routeAndReply(ctx, body)
+      return true
+    }
+    case '/memory': {
+      const sub = parts[1]?.toLowerCase()
+      if (!sub || sub === 'list') {
+        await sendHtml(ctx, formatMemoryList())
+        return true
+      }
+
+      if (sub === 'add') {
+        const maybeScope = parts[2]?.toLowerCase()
+        let scope: MemoryScope = 'global'
+        let keyIndex = 2
+        if (isValidMemoryScope(maybeScope)) {
+          scope = maybeScope
+          keyIndex = 3
+        }
+
+        const key = validateMemoryKey(parts[keyIndex])
+        const value = parts.slice(keyIndex + 1).join(' ').trim()
+        if (!key || value.length < 1 || value.length > 4000) {
+          await ctx.reply(memoryUsage())
+          return true
+        }
+
+        try {
+          upsertMemory(scope, key, value)
+          audit('memory_upsert', `${scope}:${key}`, { chatId })
+          await sendHtml(ctx, `saved <code>${escapeHtml(scope)}:${escapeHtml(key)}</code>`)
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          await ctx.reply(`memory add failed: ${msg.slice(0, 300)}`)
+        }
+        return true
+      }
+
+      if (sub === 'del') {
+        const scope = parts[2]?.toLowerCase()
+        const key = validateMemoryKey(parts[3])
+        if (!isValidMemoryScope(scope) || !key) {
+          await ctx.reply(memoryUsage())
+          return true
+        }
+        const deleted = deleteMemory(scope, key)
+        audit('memory_delete', `${scope}:${key}`, { chatId })
+        await ctx.reply(deleted ? `deleted ${scope}:${key}` : `not found: ${scope}:${key}`)
+        return true
+      }
+
+      if (sub === 'show') {
+        const scope = parts[2]?.toLowerCase()
+        const key = validateMemoryKey(parts[3])
+        if (!isValidMemoryScope(scope) || !key) {
+          await ctx.reply(memoryUsage())
+          return true
+        }
+        const row = getMemory(scope, key)
+        if (!row) {
+          await ctx.reply(`not found: ${scope}:${key}`)
+          return true
+        }
+        await sendHtml(ctx, `<b>${escapeHtml(scope)}:${escapeHtml(key)}</b>\n${escapeHtml(row.value)}`)
+        return true
+      }
+
+      await ctx.reply(memoryUsage())
       return true
     }
     case '/note':
@@ -477,6 +589,7 @@ async function handleCommand(ctx: Context, text: string): Promise<boolean> {
           '<code>/thesis</code> · <code>/literature</code> · <code>/journal</code>',
           '<code>/recall &lt;query&gt;</code> · <code>/reindex</code> · <code>/mirror-thesis [--force]</code>',
           '<code>/brief</code> · <code>/nudge</code> · <code>/routines</code> · <code>/health</code> · <code>/schedule list|pause|resume|delete|add|edit</code> · <code>/mission list|run|cancel|retry</code>',
+          '<code>/memory</code> · <code>/memory add [scope] &lt;key&gt; &lt;value...&gt;</code> · <code>/memory del &lt;scope&gt; &lt;key&gt;</code>',
           '<code>/ask [backend] &lt;prompt&gt;</code> · <code>/council [aggregator] &lt;prompt&gt;</code> · <code>/backends</code>',
         ].join('\n')
       )

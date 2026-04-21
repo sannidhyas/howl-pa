@@ -189,6 +189,18 @@ function applySchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_mc_source ON memory_chunks(source_kind, source_ref);
     CREATE INDEX IF NOT EXISTS idx_mc_mtime ON memory_chunks(source_kind, mtime);
 
+    CREATE TABLE IF NOT EXISTS system_memories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scope TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+      UNIQUE(scope, key)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_scope_updated ON system_memories(scope, updated_at DESC);
+
     CREATE TABLE IF NOT EXISTS subagent_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       chat_id TEXT,
@@ -265,6 +277,8 @@ function applySchema(db: DatabaseSync): void {
       in_inbox INTEGER NOT NULL DEFAULT 1,
       importance INTEGER,
       importance_reason TEXT,
+      topic TEXT,
+      labels_snapshot TEXT,
       classified_at INTEGER,
       created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
     );
@@ -316,6 +330,8 @@ function applySchema(db: DatabaseSync): void {
     db.exec(`ALTER TABLE gmail_items ADD COLUMN importance_reason TEXT`)
   if (!gmailCols.includes('classified_at'))
     db.exec(`ALTER TABLE gmail_items ADD COLUMN classified_at INTEGER`)
+  if (!gmailCols.includes('topic')) db.exec(`ALTER TABLE gmail_items ADD COLUMN topic TEXT`)
+  if (!gmailCols.includes('labels_snapshot')) db.exec(`ALTER TABLE gmail_items ADD COLUMN labels_snapshot TEXT`)
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_gmail_importance ON gmail_items(importance DESC, internal_date DESC)`
   )
@@ -508,6 +524,8 @@ export type AuditEventType =
   | 'mission_cancel'
   | 'mission_done'
   | 'mission_failed'
+  | 'memory_upsert'
+  | 'memory_delete'
 
 export function audit(
   eventType: AuditEventType,
@@ -924,6 +942,8 @@ export type GmailItemRow = {
   in_inbox: number
   importance: number | null
   importance_reason: string | null
+  topic: string | null
+  labels_snapshot: string | null
   classified_at: number | null
   created_at: number
 }
@@ -965,8 +985,8 @@ export function listGmailSince(sinceMs: number, limit = 20): GmailItemRow[] {
   return getDb()
     .prepare(
       `SELECT id, thread_id, sender, subject, snippet, internal_date, labels, unread,
-              in_inbox, importance, importance_reason, classified_at, created_at
-       FROM gmail_items WHERE internal_date >= ? ORDER BY internal_date DESC LIMIT ?`
+              in_inbox, importance, importance_reason, topic, labels_snapshot, classified_at,
+              created_at FROM gmail_items WHERE internal_date >= ? ORDER BY internal_date DESC LIMIT ?`
     )
     .all(sinceMs, limit) as GmailItemRow[]
 }
@@ -975,8 +995,8 @@ export function listGmailUnclassified(limit = 25): GmailItemRow[] {
   return getDb()
     .prepare(
       `SELECT id, thread_id, sender, subject, snippet, internal_date, labels, unread,
-              in_inbox, importance, importance_reason, classified_at, created_at
-       FROM gmail_items WHERE importance IS NULL
+              in_inbox, importance, importance_reason, topic, labels_snapshot, classified_at,
+              created_at FROM gmail_items WHERE importance IS NULL
        ORDER BY internal_date DESC LIMIT ?`
     )
     .all(limit) as GmailItemRow[]
@@ -986,7 +1006,7 @@ export function topGmailByImportance(sinceMs: number, limit = 10): GmailItemRow[
   return getDb()
     .prepare(
       `SELECT id, thread_id, sender, subject, snippet, internal_date, labels, unread,
-              in_inbox, importance, importance_reason, classified_at, created_at
+              in_inbox, importance, importance_reason, topic, labels_snapshot, classified_at, created_at
        FROM gmail_items
        WHERE internal_date >= ? AND importance IS NOT NULL
        ORDER BY importance DESC, internal_date DESC LIMIT ?`
@@ -994,12 +1014,100 @@ export function topGmailByImportance(sinceMs: number, limit = 10): GmailItemRow[
     .all(sinceMs, limit) as GmailItemRow[]
 }
 
+export function listGmailLabelChanged(limit = 25): GmailItemRow[] {
+  return getDb()
+    .prepare(
+      `SELECT id, thread_id, sender, subject, snippet, internal_date, labels, unread,
+              in_inbox, importance, importance_reason, topic, labels_snapshot, classified_at, created_at
+       FROM gmail_items
+       WHERE importance IS NOT NULL
+         AND labels IS NOT NULL
+         AND (labels_snapshot IS NULL OR labels_snapshot != labels)
+       ORDER BY internal_date DESC LIMIT ?`
+    )
+    .all(limit) as GmailItemRow[]
+}
+
 export function markGmailImportance(id: string, importance: number, reason: string): void {
+  markGmailClassified(id, importance, reason)
+}
+
+export function markGmailClassified(
+  id: string,
+  importance: number,
+  reason: string,
+  topic?: string,
+  labelsSnapshot?: string
+): void {
+  const normalizedImportance = Math.max(1, Math.min(5, Math.round(importance)))
+  const normalizedTopic = topic?.replace(/\s+/g, ' ').trim().slice(0, 80) || null
   getDb()
     .prepare(
-      `UPDATE gmail_items SET importance = ?, importance_reason = ?, classified_at = strftime('%s','now') * 1000 WHERE id = ?`
+      `UPDATE gmail_items
+       SET importance = ?,
+           importance_reason = ?,
+           topic = ?,
+           labels_snapshot = COALESCE(?, labels),
+           classified_at = strftime('%s','now') * 1000
+       WHERE id = ?`
     )
-    .run(Math.max(0, Math.min(100, Math.round(importance))), reason.slice(0, 240), id)
+    .run(normalizedImportance, reason.slice(0, 240), normalizedTopic, labelsSnapshot ?? null, id)
+}
+
+export type SystemMemoryRow = {
+  id: number
+  scope: string
+  key: string
+  value: string
+  created_at: number
+  updated_at: number
+}
+
+export function listMemories(scope?: string): SystemMemoryRow[] {
+  if (scope) {
+    return getDb()
+      .prepare(
+        `SELECT id, scope, key, value, created_at, updated_at
+         FROM system_memories WHERE scope = ? ORDER BY updated_at DESC`
+      )
+      .all(scope) as SystemMemoryRow[]
+  }
+  return getDb()
+    .prepare(
+      `SELECT id, scope, key, value, created_at, updated_at
+       FROM system_memories ORDER BY scope ASC, updated_at DESC`
+    )
+    .all() as SystemMemoryRow[]
+}
+
+export function getMemory(scope: string, key: string): SystemMemoryRow | null {
+  const row = getDb()
+    .prepare(
+      `SELECT id, scope, key, value, created_at, updated_at
+       FROM system_memories WHERE scope = ? AND key = ?`
+    )
+    .get(scope, key) as SystemMemoryRow | undefined
+  return row ?? null
+}
+
+export function upsertMemory(scope: string, key: string, value: string): SystemMemoryRow {
+  getDb()
+    .prepare(
+      `INSERT INTO system_memories (scope, key, value, updated_at)
+       VALUES (?, ?, ?, strftime('%s','now') * 1000)
+       ON CONFLICT(scope, key) DO UPDATE SET
+         value=excluded.value,
+         updated_at=strftime('%s','now') * 1000`
+    )
+    .run(scope, key, value)
+  const row = getMemory(scope, key)
+  if (!row) throw new Error('memory upsert failed')
+  return row
+}
+
+export function deleteMemory(scope: string, key: string): boolean {
+  const info = getDb().prepare(`DELETE FROM system_memories WHERE scope = ? AND key = ?`).run(scope, key)
+  return info.changes > 0
 }
 
 // Calendar -------------------------------------------------------------

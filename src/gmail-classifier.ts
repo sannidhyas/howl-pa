@@ -1,39 +1,98 @@
-import { listGmailUnclassified, markGmailImportance, type GmailItemRow } from './db.js'
+import {
+  getDb,
+  listGmailLabelChanged,
+  listGmailUnclassified,
+  listMemories,
+  markGmailClassified,
+  type GmailItemRow,
+} from './db.js'
 import { logger } from './logger.js'
+import { buildClassifierPrompt } from './prompts/gmail-classifier.js'
 import { BACKENDS } from './subagent/router.js'
+import type { SubagentResult } from './subagent/types.js'
 
-const PROMPT_HEADER = `You are scoring incoming email for a PhD researcher (Information Systems / trust in AI) who is also building a venture. Score each email on a 0-100 importance scale for *today's attention*.
+const BUILT_IN_LABELS = new Set([
+  'INBOX',
+  'UNREAD',
+  'IMPORTANT',
+  'SENT',
+  'DRAFT',
+  'TRASH',
+  'SPAM',
+  'STARRED',
+  'CATEGORY_PERSONAL',
+  'CATEGORY_SOCIAL',
+  'CATEGORY_PROMOTIONS',
+  'CATEGORY_UPDATES',
+  'CATEGORY_FORUMS',
+])
 
-Signals that RAISE importance: deadline, meeting confirmation or change, thesis advisor or lab correspondence, venture co-founder / investor / partner message, payment / contract / legal notice, Calendar invite, personal note from someone close, unread reply in an active thread, actionable question.
+let _classifierDown = false
+let _classifierCooldownUntil = 0
+const CLASSIFIER_COOLDOWN_MS = 120_000
 
-Signals that LOWER importance: newsletter / digest / mass mailing, promotional / marketing, notification from SaaS product, automated receipt without ambiguity, list you did not opt into.
-
-Output STRICT JSON array. One object per email in the same order. Keys:
-  id         - the email id I sent you
-  score      - integer 0-100
-  reason     - 5-12 words
-
-NO prose, NO markdown fences. Just the JSON array.`
-
-function buildBatchPrompt(rows: GmailItemRow[]): string {
-  const entries = rows.map(r => {
-    const labels = (() => {
-      try {
-        return r.labels ? (JSON.parse(r.labels) as string[]).join(',') : ''
-      } catch {
-        return r.labels ?? ''
-      }
-    })()
-    return `- id: ${r.id}
-  from: ${r.sender ?? ''}
-  subject: ${r.subject ?? ''}
-  labels: ${labels}
-  snippet: ${(r.snippet ?? '').replace(/\s+/g, ' ').slice(0, 300)}`
-  }).join('\n')
-  return `${PROMPT_HEADER}\n\nEmails:\n${entries}`
+function senderReputation(sender: string): string {
+  if (!sender.trim()) return 'sender 7-day important-rate: 0/0'
+  const since = Date.now() - 7 * 24 * 3600 * 1000
+  const row = getDb()
+    .prepare(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN importance >= 4 THEN 1 ELSE 0 END) AS important
+       FROM gmail_items
+       WHERE sender = ? AND internal_date >= ?`
+    )
+    .get(sender, since) as { total: number; important: number | null } | undefined
+  return `sender 7-day important-rate: ${Number(row?.important ?? 0)}/${Number(row?.total ?? 0)}`
 }
 
-type Scored = { id: string; score: number; reason: string }
+function recentSenderSubjects(sender: string, excludeId: string): string[] {
+  if (!sender.trim()) return []
+  return getDb()
+    .prepare(
+      `SELECT subject
+       FROM gmail_items
+       WHERE sender = ? AND id != ? AND subject IS NOT NULL AND subject != ''
+       ORDER BY internal_date DESC LIMIT 3`
+    )
+    .all(sender, excludeId)
+    .map(r => String((r as { subject: string | null }).subject ?? ''))
+    .filter(Boolean)
+}
+
+function parseUserLabels(labels: string | null): string[] {
+  if (!labels) return []
+  try {
+    const parsed = JSON.parse(labels) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((label): label is string => typeof label === 'string')
+      .filter(label => !BUILT_IN_LABELS.has(label.toUpperCase()))
+  } catch {
+    return []
+  }
+}
+
+function renderEmailHints(): string {
+  return listMemories('email_hint').map(m => `${m.key}: ${m.value}`).join('\n')
+}
+
+function buildBatchPrompt(rows: GmailItemRow[], emailHints: string): string {
+  return buildClassifierPrompt({
+    emailHints,
+    emails: rows.map(r => ({
+      id: r.id,
+      subject: r.subject ?? '',
+      sender: r.sender ?? '',
+      snippet: r.snippet ?? '',
+      userLabels: parseUserLabels(r.labels),
+      senderReputation: senderReputation(r.sender ?? ''),
+      recentSubjects: recentSenderSubjects(r.sender ?? '', r.id),
+    })),
+  })
+}
+
+type Scored = { id: string; importance: number; importance_reason: string; topic?: string }
 
 function parseScored(text: string): Scored[] {
   const trimmed = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
@@ -48,9 +107,21 @@ function parseScored(text: string): Scored[] {
       if (!item || typeof item !== 'object') continue
       const row = item as Record<string, unknown>
       if (typeof row.id !== 'string') continue
-      const score = typeof row.score === 'number' ? row.score : Number.parseInt(String(row.score ?? ''), 10)
-      if (!Number.isFinite(score)) continue
-      out.push({ id: row.id, score, reason: typeof row.reason === 'string' ? row.reason : '' })
+      const rawImportance = typeof row.importance === 'number'
+        ? row.importance
+        : Number.parseInt(String(row.importance ?? ''), 10)
+      if (!Number.isFinite(rawImportance)) continue
+      const topic = typeof row.topic === 'string'
+        ? row.topic.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean).slice(0, 3).join(' ')
+        : ''
+      out.push({
+        id: row.id,
+        importance: Math.max(1, Math.min(5, Math.round(rawImportance))),
+        importance_reason: typeof row.importance_reason === 'string'
+          ? row.importance_reason
+          : '',
+        topic: topic || undefined,
+      })
     }
     return out
   } catch {
@@ -66,6 +137,37 @@ function chooseBackendName(): string {
   return ollama ?? 'claude'
 }
 
+function nextClassifierRows(limit: number): { rows: GmailItemRow[]; skipped: number } {
+  const byId = new Map<string, GmailItemRow>()
+  for (const row of listGmailUnclassified(limit)) byId.set(row.id, row)
+  if (byId.size < limit) {
+    for (const row of listGmailLabelChanged(limit - byId.size)) byId.set(row.id, row)
+  }
+  const candidates = [...byId.values()]
+  const rows = candidates.filter(row => {
+    if (row.importance === null) return true
+    return (row.labels_snapshot ?? null) !== (row.labels ?? null)
+  })
+  return { rows: rows.slice(0, limit), skipped: candidates.length - rows.length }
+}
+
+function markClassifierDown(backend: string, error: string): void {
+  if (!_classifierDown) {
+    logger.warn({ backend, error }, 'gmail classifier down - entering cooldown')
+  }
+  _classifierDown = true
+  _classifierCooldownUntil = Date.now() + CLASSIFIER_COOLDOWN_MS
+}
+
+function recoverClassifierIfReady(backend: string): boolean {
+  if (!_classifierDown) return true
+  if (Date.now() < _classifierCooldownUntil) return false
+  logger.info({ backend }, 'classifier recovered')
+  _classifierDown = false
+  _classifierCooldownUntil = 0
+  return true
+}
+
 export type ClassifyResult = {
   classified: number
   skipped: number
@@ -78,12 +180,38 @@ export async function classifyPendingEmails(maxBatches = 3, batchSize = 8): Prom
   const backend = BACKENDS[backendName]
   const out: ClassifyResult = { classified: 0, skipped: 0, batches: 0, backend: backendName }
   if (!backend) return out
+  if (!recoverClassifierIfReady(backendName)) return out
+
+  const isOllama = backendName.startsWith('ollama:')
+  const emailHints = renderEmailHints()
+
   for (let i = 0; i < maxBatches; i++) {
-    const rows = listGmailUnclassified(batchSize)
+    const next = nextClassifierRows(batchSize)
+    out.skipped += next.skipped
+    const rows = next.rows
     if (rows.length === 0) break
     out.batches += 1
-    const prompt = buildBatchPrompt(rows)
-    const result = await backend.run({ prompt, timeoutMs: 120_000 })
+    const prompt = buildBatchPrompt(rows, emailHints)
+    let result: SubagentResult
+    try {
+      result = await backend.run({ prompt, timeoutMs: 120_000 })
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err)
+      if (isOllama) {
+        markClassifierDown(backendName, error)
+        break
+      }
+      logger.warn({ backend: backendName, error }, 'classifier backend threw')
+      break
+    }
+    if (result.error) {
+      if (isOllama) {
+        markClassifierDown(backendName, result.error)
+        break
+      }
+      logger.warn({ backend: backendName, error: result.error }, 'classifier backend error')
+      break
+    }
     const scored = parseScored(result.text)
     const byId = new Map(scored.map(s => [s.id, s]))
     for (const row of rows) {
@@ -92,7 +220,7 @@ export async function classifyPendingEmails(maxBatches = 3, batchSize = 8): Prom
         out.skipped += 1
         continue
       }
-      markGmailImportance(row.id, hit.score, hit.reason)
+      markGmailClassified(row.id, hit.importance, hit.importance_reason, hit.topic, row.labels ?? undefined)
       out.classified += 1
     }
     if (scored.length === 0) {

@@ -22,6 +22,11 @@ import {
   updateMissionTaskStatus,
   updateScheduledFields,
   upsertScheduledTask,
+  listMemories,
+  getMemory,
+  upsertMemory,
+  deleteMemory,
+  type SystemMemoryRow,
 } from './db.js'
 import { logger } from './logger.js'
 import { startMission } from './missions/runner.js'
@@ -50,6 +55,21 @@ const CAPTURE_TYPES: CaptureType[] = [
   'journal',
   'ephemeral',
 ]
+
+const MEMORY_SCOPES = ['global', 'email_hint', 'task_hint', 'agent_hint', 'capture_hint', 'journal_hint'] as const
+type MemoryScope = typeof MEMORY_SCOPES[number]
+const SCOPE_DESCRIPTIONS: Record<MemoryScope, string> = {
+  global: 'General context injected into all agent prompts',
+  email_hint: 'Rules for the Gmail importance classifier',
+  task_hint: 'Hints for task priority scoring',
+  agent_hint: 'Additional context prepended to subagent system prompts',
+  capture_hint: 'Override rules for capture type classification',
+  journal_hint: 'Hints for journal/ritual responses',
+}
+
+function isMemoryScope(value: unknown): value is MemoryScope {
+  return typeof value === 'string' && MEMORY_SCOPES.includes(value as MemoryScope)
+}
 
 function resolveToken(): string {
   return process.env.DASHBOARD_TOKEN ?? ''
@@ -1138,6 +1158,80 @@ function buildApp(): Hono {
       : 'dashboard test event'
     chatEvents.emit('chat_error', { chatId, sessionId, category, message })
     return c.json({ ok: true, emitted: true, default_chat_id: ALLOWED_CHAT_ID })
+  })
+
+  app.get('/api/memory/scopes', c => {
+    const gate = requireAuth(c)
+    if (gate) return gate
+    return c.json({
+      ok: true,
+      scopes: MEMORY_SCOPES.map(scope => ({ scope, description: SCOPE_DESCRIPTIONS[scope] })),
+    })
+  })
+
+  app.get('/api/memory', c => {
+    const gate = requireAuth(c)
+    if (gate) return gate
+    const scopeRaw = c.req.query('scope')
+    if (scopeRaw !== undefined && !isMemoryScope(scopeRaw)) {
+      return c.json({ ok: false, error: 'invalid scope' }, 400)
+    }
+    const memoryRows: SystemMemoryRow[] = listMemories(scopeRaw)
+    return c.json({ ok: true, rows: memoryRows })
+  })
+
+  app.post('/api/memory', async c => {
+    const gate = requireAuth(c)
+    if (gate) return gate
+    const ctGate = requireJson(c)
+    if (ctGate) return ctGate
+
+    const body = await readJsonObject(c)
+    if (body instanceof Response) return body
+
+    if (!isMemoryScope(body.scope)) {
+      return c.json({ ok: false, error: 'invalid scope' }, 400)
+    }
+
+    const key = typeof body.key === 'string' ? body.key.trim() : ''
+    if (!NAME_RE.test(key)) {
+      return c.json({ ok: false, error: 'invalid key format' }, 400)
+    }
+
+    const value = typeof body.value === 'string' ? body.value.trim() : ''
+    if (value.length < 1 || value.length > 4000) {
+      return c.json({ ok: false, error: 'value must be 1..4000 chars' }, 400)
+    }
+
+    let row: SystemMemoryRow
+    try {
+      row = upsertMemory(body.scope, key, value)
+    } catch (err) {
+      logger.error({ err, scope: body.scope, key }, 'memory upsert failed')
+      return c.json({ ok: false, error: 'memory upsert failed' }, 500)
+    }
+
+    audit('memory_upsert', `${body.scope}:${key}`)
+    return c.json({ ok: true, row })
+  })
+
+  app.delete('/api/memory', c => {
+    const gate = requireAuth(c)
+    if (gate) return gate
+
+    const scope = c.req.query('scope')
+    const key = c.req.query('key')
+    if (!isMemoryScope(scope)) {
+      return c.json({ ok: false, error: 'invalid scope' }, 400)
+    }
+    if (!key || !NAME_RE.test(key)) {
+      return c.json({ ok: false, error: 'invalid key format' }, 400)
+    }
+
+    const existing = getMemory(scope, key)
+    const deleted = deleteMemory(scope, key)
+    audit('memory_delete', `${scope}:${key}${existing ? '' : ' (missing)'}`)
+    return c.json({ ok: true, deleted })
   })
 
   registerUsageRoute(app, requireAuth)

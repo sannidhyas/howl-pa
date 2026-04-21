@@ -1,4 +1,4 @@
-import { recordSubagentRun } from '../db.js'
+import { listMemories, recordSubagentRun } from '../db.js'
 import { logger } from '../logger.js'
 import { ClaudeBackend } from './claude.js'
 import { CodexBackend } from './codex.js'
@@ -166,6 +166,42 @@ function defaultAggregator(input: SubagentInput, opts: DispatchOptions): Aggrega
   return 'best-of-n'
 }
 
+const SYSTEM_MEMORY_LIMIT = 2000
+
+function renderSystemMemories(): string {
+  const memories = [...listMemories('global'), ...listMemories('agent_hint')]
+  if (memories.length === 0) return ''
+
+  const lines = memories.map(m => {
+    const value = m.value.replace(/\s+/g, ' ').trim()
+    const line = `${m.scope}.${m.key}: ${value}`
+    return line.length > 500 ? `${line.slice(0, 497)}...` : line
+  })
+
+  let block = ''
+  for (const [idx, line] of lines.entries()) {
+    const candidate = block ? `${block}\n${line}` : line
+    if (candidate.length > SYSTEM_MEMORY_LIMIT) {
+      const omitted = lines.length - idx
+      const suffix = `\n...${omitted} more entries omitted`
+      const room = SYSTEM_MEMORY_LIMIT - suffix.length
+      return `${block.slice(0, Math.max(0, room)).trimEnd()}${suffix}`.trim()
+    }
+    block = candidate
+  }
+
+  return block
+}
+
+function prependSystemMemories(input: SubagentInput): SubagentInput {
+  const memBlock = renderSystemMemories()
+  if (!memBlock) return input
+  return {
+    ...input,
+    prompt: `[System context]\n${memBlock}\n\n[Task]\n${input.prompt}`,
+  }
+}
+
 export async function dispatchSubagent(
   input: SubagentInput,
   opts: DispatchOptions = {}
@@ -174,10 +210,11 @@ export async function dispatchSubagent(
   const mode = detectMode(input, opts)
   const role = inferRole(input)
   const promptPreview = input.prompt.slice(0, 240)
+  const runInput = prependSystemMemories(input)
 
   if (mode === 'single') {
     const backend = pickSingleBackend(input, opts.forcedBackend)
-    const result = await backend.run(input).catch<SubagentResult>(err => ({
+    const result = await backend.run(runInput).catch<SubagentResult>(err => ({
       backend: backend.name,
       text: '',
       durationMs: 0,
@@ -214,7 +251,7 @@ export async function dispatchSubagent(
 
   logger.info({ aggregator, role, members: members.map(m => m.name), judge: judge.name }, 'council dispatch')
 
-  const outcome = await runCouncil({ input, members, aggregator, judge })
+  const outcome = await runCouncil({ input: runInput, members, aggregator, judge })
 
   const backendsUsed = members.map(m => m.name)
   const fullOk = outcome.members.every(r => !r.error)
