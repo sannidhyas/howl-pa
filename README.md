@@ -29,7 +29,68 @@ howl-pa start
 
 ## Status
 
-v0.0.18. Runs daily against a real workload. Ships as an npm package with a bundled Claude Code slash command.
+v1.0.0. Runs daily against a real workload. Ships as an npm package with a bundled Claude Code slash command + MCP plugin.
+
+## Security & credentials
+
+**Howl PA is a single-tenant tool.** Every deployment is one user, their own credentials, their own data. Nothing is shared between users, no credentials are bundled in the package, and no data ever leaves the user's machine unless they explicitly tunnel the dashboard.
+
+### What you own
+
+| Credential | Where you get it | Where it lives |
+|---|---|---|
+| Telegram bot token | You create your own bot via [@BotFather](https://t.me/botfather) | `<config-dir>/.env` → `TELEGRAM_BOT_TOKEN` |
+| Your Telegram chat ID | [@userinfobot](https://t.me/userinfobot) | `<config-dir>/.env` → `ALLOWED_CHAT_ID` |
+| Claude Code OAuth token | Run `claude setup-token` on your machine | `<config-dir>/.env` → `CLAUDE_CODE_OAUTH_TOKEN` |
+| Google OAuth client (Gmail + Calendar + Tasks) | **You create your own** OAuth 2.0 client (type: Desktop app) in [Google Cloud Console](https://console.cloud.google.com/apis/credentials) | `<config-dir>/.env` → `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` |
+| Google refresh token (exchanged at `setup:google`) | The loopback redirect flow writes this locally | `<config-dir>/google-token.json` (mode 600) |
+| Dashboard password (optional) | You choose, during `howl-pa setup` or `howl-pa set-password` | `<config-dir>/.env` → `DASHBOARD_PASSWORD_HASH` (SHA-256 of `salt:password`) |
+| Dashboard bearer token | Generated at setup, used by the API + `/howl` Claude Code command | `<config-dir>/.env` → `DASHBOARD_TOKEN` |
+
+`<config-dir>` resolves to `$HOWL_CONFIG`, `$CLAUDECLAW_CONFIG`, `$XDG_CONFIG_HOME/howl-pa`, `~/.claudeclaw` (legacy), or `~/.config/howl-pa`, in that order.
+
+### What is NOT in the repo
+
+- No Telegram tokens
+- No Google OAuth client ID or secret
+- No Anthropic API keys
+- No `.env` with real values (`.env.example` ships only defaults: paths, ports, timeouts)
+- No `google-token.json`
+- No database, vault contents, or user data
+
+Cloning this repo gives you the code — nothing else. `npm install howl-pa` gives you the compiled binary — still nothing else. You must bring your own credentials to every new machine.
+
+### Google OAuth: who owns what
+
+Howl PA does **not** ship a shared Google OAuth client. Google's Terms of Service forbid redistributing `GOCSPX-*` secrets, and every new user creates their own Desktop-app OAuth client in ~10 seconds:
+
+1. [Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials)
+2. Create OAuth 2.0 Client ID → Application type: **Desktop app**
+3. Enable the APIs you need: Gmail API, Calendar API, Tasks API
+4. Run `howl-pa setup:google` — it prompts for the client ID + secret and then opens the consent page in your browser
+
+The refresh token Howl receives is stored in `<config-dir>/google-token.json` with mode 600. It never leaves your machine.
+
+### Moving to a new machine
+
+```sh
+# on the old machine — archive just the credentials (not the data)
+howl-pa backup           # writes ~/howl-pa-backup-YYYY-MM-DD.tgz
+
+# copy the tarball securely (scp / rsync / yubikey — your call)
+
+# on the new machine
+npm i -g howl-pa
+howl-pa backup --restore ~/howl-pa-backup-YYYY-MM-DD.tgz
+howl-pa start
+```
+
+### Starting over
+
+```sh
+howl-pa reset            # auto-backs-up, then wipes .env + google-token.json + db + systemd unit
+howl-pa setup            # start fresh
+```
 
 ## Quickstart
 

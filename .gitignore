@@ -13,6 +13,13 @@ store/
 .agents/
 vendor/
 
-# Howl PA runtime config (user-specific)
+# Howl PA runtime config (user-specific) — belt-and-suspenders so a
+# stray write inside the repo can never leak credentials.
 .claudeclaw/
 howl-pa-*.tgz
+google-token.json
+howl.db
+howl.db-*
+claudeclaw.pid
+config/howl-pa/
+.config/howl-pa/
