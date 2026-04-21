@@ -1,6 +1,6 @@
 {
   "name": "howl-pa",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Howl PA — personal Mission Control. Telegram-first assistant that maintains an Obsidian vault, ingests Gmail/Calendar/Google Tasks, and spawns Codex or Claude subagents.",
   "type": "module",
   "license": "MIT",
@@ -53,15 +53,12 @@
     "setup:google": "tsx scripts/setup-google.ts",
     "health": "tsx scripts/health.ts",
     "typecheck": "tsc -p . --noEmit",
-    "prepare": "tsc -p .",
     "prepublishOnly": "npm run typecheck && npm run build"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.34",
     "@hapi/boom": "^10.0.1",
     "@hono/node-server": "^1.13.7",
-    "@types/js-yaml": "^4.0.9",
-    "@types/node": "^22.9.0",
     "cron-parser": "^4.9.0",
     "googleapis": "^171.4.0",
     "grammy": "^1.30.0",
@@ -71,11 +68,13 @@
     "pino": "^9.5.0",
     "simple-git": "^3.27.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.6.3",
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "pino-pretty": "^11.3.0"
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.9.0",
+    "pino-pretty": "^11.3.0",
+    "typescript": "^5.6.3"
   },
   "publishConfig": {
     "access": "public"
