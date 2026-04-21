@@ -3,9 +3,46 @@
   "version": "0.0.1",
   "description": "Howl PA — personal Mission Control. Telegram-first assistant that maintains an Obsidian vault, ingests Gmail/Calendar/Google Tasks, and spawns Codex or Claude subagents.",
   "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "Sannidhya Sandheer",
+    "email": "shrutiatulit@gmail.com"
+  },
+  "homepage": "https://github.com/shrutiatulit/howl-pa",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shrutiatulit/howl-pa.git"
+  },
+  "bugs": {
+    "url": "https://github.com/shrutiatulit/howl-pa/issues"
+  },
+  "keywords": [
+    "telegram",
+    "obsidian",
+    "mission-control",
+    "personal-assistant",
+    "claude",
+    "codex",
+    "ollama",
+    "gmail",
+    "google-calendar",
+    "google-tasks"
+  ],
   "engines": {
     "node": ">=22"
   },
+  "bin": {
+    "howl-pa": "bin/howl-pa.mjs"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "scripts/",
+    "src/",
+    "tsconfig.json",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "start": "node --enable-source-maps dist/index.js",
     "build": "tsc -p .",
@@ -15,7 +52,8 @@
     "council": "tsx scripts/ollama-council.ts",
     "setup:google": "tsx scripts/setup-google.ts",
     "health": "tsx scripts/health.ts",
-    "typecheck": "tsc -p . --noEmit"
+    "typecheck": "tsc -p . --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run build"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.34",
@@ -29,13 +67,16 @@
     "mammoth": "^1.12.0",
     "pino": "^9.5.0",
     "simple-git": "^3.27.0",
+    "tsx": "^4.19.2",
     "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.9.0",
     "pino-pretty": "^11.3.0",
-    "tsx": "^4.19.2",
     "typescript": "^5.6.3"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
