@@ -21,7 +21,8 @@ import {
   listScheduledTasks,
   setTaskStatus,
 } from './db.js'
-import { BUILT_INS, runMissionByName, scheduledTaskSummary, type BuiltIn } from './scheduler.js'
+import { BUILT_INS, scheduledTaskSummary, type BuiltIn } from './scheduler.js'
+import { executeMission } from './missions/runner.js'
 import { cronHuman } from './cron-human.js'
 import { recall } from './memory.js'
 import {
@@ -302,8 +303,13 @@ async function handleCommand(ctx: Context, text: string): Promise<boolean> {
       if (sub === 'run' && parts[2]) {
         await ctx.reply(`running mission ${parts[2]}…`)
         try {
-          const summary = await runMissionByName(parts[2])
-          await sendHtml(ctx, `<b>${escapeHtml(parts[2])}</b> · ${escapeHtml(summary)}`)
+          const result = await executeMission({
+            mission: parts[2],
+            source: 'telegram',
+            chatId,
+          })
+          if (!result.ok) throw new Error(result.error ?? `mission failed: ${parts[2]}`)
+          await sendHtml(ctx, `<b>${escapeHtml(parts[2])}</b> · ${escapeHtml(result.summary ?? '')}`)
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           await ctx.reply(`⚠️ mission error: ${msg.slice(0, 400)}`)
@@ -326,8 +332,13 @@ async function handleCommand(ctx: Context, text: string): Promise<boolean> {
     case '/brief': {
       await ctx.reply('composing brief…')
       try {
-        const summary = await runMissionByName('morning-brief')
-        logger.info({ summary }, 'manual brief run')
+        const result = await executeMission({
+          mission: 'morning-brief',
+          source: 'telegram',
+          chatId,
+        })
+        if (!result.ok) throw new Error(result.error ?? 'brief failed')
+        logger.info({ summary: result.summary }, 'manual brief run')
       } catch (err) {
         await ctx.reply(`⚠️ brief error: ${err instanceof Error ? err.message : String(err)}`)
       }

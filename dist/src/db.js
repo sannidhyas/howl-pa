@@ -150,6 +150,8 @@ function applySchema(db) {
       event_type TEXT NOT NULL,
       detail TEXT,
       blocked INTEGER NOT NULL DEFAULT 0,
+      ref_kind TEXT,
+      ref_id INTEGER,
       created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
     );
 
@@ -224,6 +226,8 @@ function applySchema(db) {
       mission TEXT,
       assigned_agent TEXT NOT NULL DEFAULT 'main',
       priority INTEGER NOT NULL DEFAULT 0,
+      source TEXT,
+      scheduled_task_id INTEGER,
       status TEXT NOT NULL DEFAULT 'queued',
       result TEXT,
       started_at INTEGER,
@@ -300,6 +304,26 @@ function applySchema(db) {
     if (!sarCols.includes('role'))
         db.exec(`ALTER TABLE subagent_runs ADD COLUMN role TEXT`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_sar_role ON subagent_runs(role, created_at DESC)`);
+    const auditCols = db.prepare(`PRAGMA table_info(audit_log)`).all().map(r => r.name);
+    try {
+        if (!auditCols.includes('ref_kind'))
+            db.exec(`ALTER TABLE audit_log ADD COLUMN ref_kind TEXT`);
+        if (!auditCols.includes('ref_id'))
+            db.exec(`ALTER TABLE audit_log ADD COLUMN ref_id INTEGER`);
+    }
+    catch (err) {
+        logger.warn({ err }, 'audit_log column migration failed');
+    }
+    const missionTaskCols = db.prepare(`PRAGMA table_info(mission_tasks)`).all().map(r => r.name);
+    try {
+        if (!missionTaskCols.includes('source'))
+            db.exec(`ALTER TABLE mission_tasks ADD COLUMN source TEXT`);
+        if (!missionTaskCols.includes('scheduled_task_id'))
+            db.exec(`ALTER TABLE mission_tasks ADD COLUMN scheduled_task_id INTEGER`);
+    }
+    catch (err) {
+        logger.warn({ err }, 'mission_tasks column migration failed');
+    }
 }
 export function getMirrorState(sourcePath) {
     const row = getDb()
@@ -355,9 +379,9 @@ export function recordTokenUsage(entry) {
 }
 export function audit(eventType, detail, opts = {}) {
     getDb()
-        .prepare(`INSERT INTO audit_log (chat_id, agent_id, event_type, detail, blocked)
-       VALUES (?, ?, ?, ?, ?)`)
-        .run(opts.chatId ?? null, opts.agentId ?? 'main', eventType, detail, opts.blocked ? 1 : 0);
+        .prepare(`INSERT INTO audit_log (chat_id, agent_id, event_type, detail, blocked, ref_kind, ref_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`)
+        .run(opts.chatId ?? null, opts.agentId ?? 'main', eventType, detail, opts.blocked ? 1 : 0, opts.ref_kind ?? null, opts.ref_id ?? null);
 }
 export function closeDatabase() {
     if (db) {
@@ -468,20 +492,20 @@ export function recoverStuckTasks(timeoutMs) {
 }
 export function enqueueMission(args) {
     const info = getDb()
-        .prepare(`INSERT INTO mission_tasks (title, prompt, mission, assigned_agent, priority)
-       VALUES (?, ?, ?, ?, ?)`)
-        .run(args.title, args.prompt ?? null, args.mission ?? null, args.assignedAgent ?? 'main', args.priority ?? 0);
+        .prepare(`INSERT INTO mission_tasks (title, prompt, mission, assigned_agent, priority, source, scheduled_task_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`)
+        .run(args.title, args.prompt ?? null, args.mission ?? null, args.assignedAgent ?? 'main', args.priority ?? 0, args.source ?? null, args.scheduledTaskId ?? null);
     return Number(info.lastInsertRowid);
 }
 export function listMissionTasks(status, limit = 20) {
     if (status) {
         return getDb()
-            .prepare(`SELECT id, title, prompt, mission, assigned_agent, priority, status, result, started_at, completed_at, created_at
+            .prepare(`SELECT id, title, prompt, mission, assigned_agent, priority, source, scheduled_task_id, status, result, started_at, completed_at, created_at
          FROM mission_tasks WHERE status = ? ORDER BY priority DESC, created_at LIMIT ?`)
             .all(status, limit);
     }
     return getDb()
-        .prepare(`SELECT id, title, prompt, mission, assigned_agent, priority, status, result, started_at, completed_at, created_at
+        .prepare(`SELECT id, title, prompt, mission, assigned_agent, priority, source, scheduled_task_id, status, result, started_at, completed_at, created_at
        FROM mission_tasks ORDER BY priority DESC, created_at DESC LIMIT ?`)
         .all(limit);
 }

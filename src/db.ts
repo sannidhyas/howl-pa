@@ -166,6 +166,8 @@ function applySchema(db: DatabaseSync): void {
       event_type TEXT NOT NULL,
       detail TEXT,
       blocked INTEGER NOT NULL DEFAULT 0,
+      ref_kind TEXT,
+      ref_id INTEGER,
       created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
     );
 
@@ -240,6 +242,8 @@ function applySchema(db: DatabaseSync): void {
       mission TEXT,
       assigned_agent TEXT NOT NULL DEFAULT 'main',
       priority INTEGER NOT NULL DEFAULT 0,
+      source TEXT,
+      scheduled_task_id INTEGER,
       status TEXT NOT NULL DEFAULT 'queued',
       result TEXT,
       started_at INTEGER,
@@ -325,6 +329,27 @@ function applySchema(db: DatabaseSync): void {
   ).map(r => r.name)
   if (!sarCols.includes('role')) db.exec(`ALTER TABLE subagent_runs ADD COLUMN role TEXT`)
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sar_role ON subagent_runs(role, created_at DESC)`)
+
+  const auditCols = (
+    db.prepare(`PRAGMA table_info(audit_log)`).all() as Array<{ name: string }>
+  ).map(r => r.name)
+  try {
+    if (!auditCols.includes('ref_kind')) db.exec(`ALTER TABLE audit_log ADD COLUMN ref_kind TEXT`)
+    if (!auditCols.includes('ref_id')) db.exec(`ALTER TABLE audit_log ADD COLUMN ref_id INTEGER`)
+  } catch (err) {
+    logger.warn({ err }, 'audit_log column migration failed')
+  }
+
+  const missionTaskCols = (
+    db.prepare(`PRAGMA table_info(mission_tasks)`).all() as Array<{ name: string }>
+  ).map(r => r.name)
+  try {
+    if (!missionTaskCols.includes('source')) db.exec(`ALTER TABLE mission_tasks ADD COLUMN source TEXT`)
+    if (!missionTaskCols.includes('scheduled_task_id'))
+      db.exec(`ALTER TABLE mission_tasks ADD COLUMN scheduled_task_id INTEGER`)
+  } catch (err) {
+    logger.warn({ err }, 'mission_tasks column migration failed')
+  }
 }
 
 export function getMirrorState(sourcePath: string): { mtime: number; vault_path: string } | null {
@@ -462,23 +487,33 @@ export type AuditEventType =
   | 'scheduler_delete'
   | 'mission_retry'
   | 'mission_cancel'
+  | 'mission_done'
+  | 'mission_failed'
 
 export function audit(
   eventType: AuditEventType,
   detail: string,
-  opts: { chatId?: string; agentId?: string; blocked?: boolean } = {}
+  opts: {
+    chatId?: string
+    agentId?: string
+    blocked?: boolean
+    ref_kind?: string
+    ref_id?: number
+  } = {}
 ): void {
   getDb()
     .prepare(
-      `INSERT INTO audit_log (chat_id, agent_id, event_type, detail, blocked)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO audit_log (chat_id, agent_id, event_type, detail, blocked, ref_kind, ref_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       opts.chatId ?? null,
       opts.agentId ?? 'main',
       eventType,
       detail,
-      opts.blocked ? 1 : 0
+      opts.blocked ? 1 : 0,
+      opts.ref_kind ?? null,
+      opts.ref_id ?? null
     )
 }
 
@@ -746,6 +781,8 @@ export type MissionTaskRow = {
   mission: string | null
   assigned_agent: string
   priority: number
+  source: string | null
+  scheduled_task_id: number | null
   status: MissionTaskStatus
   result: string | null
   started_at: number | null
@@ -759,18 +796,22 @@ export function enqueueMission(args: {
   mission?: string
   assignedAgent?: string
   priority?: number
+  source?: string
+  scheduledTaskId?: number
 }): number {
   const info = getDb()
     .prepare(
-      `INSERT INTO mission_tasks (title, prompt, mission, assigned_agent, priority)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO mission_tasks (title, prompt, mission, assigned_agent, priority, source, scheduled_task_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       args.title,
       args.prompt ?? null,
       args.mission ?? null,
       args.assignedAgent ?? 'main',
-      args.priority ?? 0
+      args.priority ?? 0,
+      args.source ?? null,
+      args.scheduledTaskId ?? null
     )
   return Number(info.lastInsertRowid)
 }
@@ -779,14 +820,14 @@ export function listMissionTasks(status?: MissionTaskStatus, limit = 20): Missio
   if (status) {
     return getDb()
       .prepare(
-        `SELECT id, title, prompt, mission, assigned_agent, priority, status, result, started_at, completed_at, created_at
+        `SELECT id, title, prompt, mission, assigned_agent, priority, source, scheduled_task_id, status, result, started_at, completed_at, created_at
          FROM mission_tasks WHERE status = ? ORDER BY priority DESC, created_at LIMIT ?`
       )
       .all(status, limit) as MissionTaskRow[]
   }
   return getDb()
     .prepare(
-      `SELECT id, title, prompt, mission, assigned_agent, priority, status, result, started_at, completed_at, created_at
+      `SELECT id, title, prompt, mission, assigned_agent, priority, source, scheduled_task_id, status, result, started_at, completed_at, created_at
        FROM mission_tasks ORDER BY priority DESC, created_at DESC LIMIT ?`
     )
     .all(limit) as MissionTaskRow[]

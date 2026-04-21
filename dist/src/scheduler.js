@@ -3,15 +3,18 @@ import CronParserModule from 'cron-parser';
 // must reach methods through the default export; named imports fail with
 // SyntaxError: does not provide an export named 'parseExpression'.
 const { parseExpression } = CronParserModule;
-import { AGENT_TIMEOUT_MS, ALLOWED_CHAT_ID } from './config.js';
+import { AGENT_TIMEOUT_MS } from './config.js';
 import { dueScheduledTasks, listScheduledTasks, markTaskRan, markTaskRunning, recoverStuckTasks, upsertScheduledTask, } from './db.js';
 import { logger } from './logger.js';
-import { MISSIONS } from './missions/index.js';
+import { executeMission, initRunner } from './missions/runner.js';
 const TICK_MS = 60_000;
 let state = {
     timer: null,
     opts: null,
 };
+export function getSchedulerOpts() {
+    return state.opts;
+}
 export const BUILT_INS = [
     { name: 'morning-brief', mission: 'morning-brief', schedule: '0 7 * * *', description: 'Composes the daily brief from vault + calendar + tasks and sends it to Telegram', priority: 10 },
     { name: 'morning-ritual', mission: 'morning-ritual', schedule: '5 7 * * *', description: 'Asks focus, thesis artifact, venture artifact, and 3 needle tasks for the day', priority: 9 },
@@ -60,6 +63,7 @@ function registerBuiltIns() {
 }
 export function initScheduler(opts) {
     state.opts = opts;
+    initRunner(opts);
     registerBuiltIns();
     const recovered = recoverStuckTasks(AGENT_TIMEOUT_MS);
     if (recovered > 0)
@@ -73,19 +77,14 @@ export function stopScheduler() {
         clearInterval(state.timer);
         state.timer = null;
     }
+    state.opts = null;
+    initRunner(null);
 }
 export async function runMissionByName(name, args) {
-    const fn = MISSIONS[name];
-    if (!fn || !state.opts)
-        throw new Error(`unknown mission: ${name}`);
-    const ctx = {
-        send: state.opts.send,
-        chatId: state.opts.defaultChatId ?? String(ALLOWED_CHAT_ID),
-        now: new Date(),
-        args,
-    };
-    const result = await fn(ctx);
-    return result.summary;
+    const result = await executeMission({ mission: name, args, source: 'adhoc' });
+    if (!result.ok)
+        throw new Error(result.error ?? `mission failed: ${name}`);
+    return result.summary ?? '';
 }
 async function tick() {
     if (!state.opts)
@@ -98,42 +97,50 @@ async function tick() {
 async function runScheduled(task) {
     if (!state.opts)
         return;
-    const opts = state.opts;
-    const fn = MISSIONS[task.mission];
-    if (!fn) {
-        logger.warn({ task: task.name, mission: task.mission }, 'unknown mission');
+    let parsedArgs;
+    if (task.args) {
+        try {
+            const parsed = JSON.parse(task.args);
+            if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                throw new Error('scheduled task args must be a JSON object');
+            }
+            parsedArgs = parsed;
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            logger.error({ err, task: task.name }, 'invalid scheduled task args');
+            markTaskRan({
+                id: task.id,
+                nextRun: nextRunFor(task.schedule),
+                lastResult: `error: invalid args: ${msg.slice(0, 360)}`,
+            });
+            return;
+        }
+    }
+    markTaskRunning(task.id);
+    const result = await executeMission({
+        mission: task.mission,
+        args: parsedArgs,
+        source: 'scheduler',
+        title: task.name,
+        scheduledTaskId: task.id,
+        agentId: task.agent_id,
+    });
+    if (result.ok) {
         markTaskRan({
             id: task.id,
             nextRun: nextRunFor(task.schedule),
-            lastResult: `skipped: unknown mission ${task.mission}`,
-            status: 'disabled',
+            lastResult: `ok: ${result.summary ?? ''} (${result.durationMs}ms)`,
         });
         return;
     }
-    markTaskRunning(task.id);
-    const start = Date.now();
-    try {
-        const result = await fn({
-            send: opts.send,
-            chatId: opts.defaultChatId ?? String(ALLOWED_CHAT_ID),
-            now: new Date(),
-            args: task.args ? JSON.parse(task.args) : undefined,
-        });
-        markTaskRan({
-            id: task.id,
-            nextRun: nextRunFor(task.schedule),
-            lastResult: `ok: ${result.summary} (${Date.now() - start}ms)`,
-        });
-    }
-    catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        logger.error({ err, task: task.name }, 'mission failed');
-        markTaskRan({
-            id: task.id,
-            nextRun: nextRunFor(task.schedule),
-            lastResult: `error: ${msg.slice(0, 400)}`,
-        });
-    }
+    const msg = result.error ?? 'mission failed';
+    markTaskRan({
+        id: task.id,
+        nextRun: nextRunFor(task.schedule),
+        lastResult: `error: ${msg.slice(0, 400)}`,
+        status: msg.startsWith('unknown mission:') ? 'disabled' : 'active',
+    });
 }
 export function scheduledTaskSummary() {
     return listScheduledTasks().map(t => {

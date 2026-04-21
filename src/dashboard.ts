@@ -11,7 +11,8 @@ import {
   updateMissionTaskStatus,
 } from './db.js'
 import { logger } from './logger.js'
-import { BUILT_INS, runMissionByName } from './scheduler.js'
+import { startMission } from './missions/runner.js'
+import { BUILT_INS } from './scheduler.js'
 import { chatEvents, type ChatEventPayload } from './state.js'
 import { dashboardHtml } from './dashboard-html.js'
 
@@ -190,7 +191,7 @@ function buildApp(): Hono {
     if (gate) return gate
     return c.json({
       rows: rows(
-        `SELECT event_type, detail, blocked, chat_id, agent_id, created_at
+        `SELECT event_type, detail, blocked, chat_id, agent_id, ref_kind, ref_id, created_at
          FROM audit_log ORDER BY id DESC LIMIT 100`
       ),
     })
@@ -242,17 +243,42 @@ function buildApp(): Hono {
       }
     }
 
-    runMissionByName(task.mission, parsedArgs)
-      .then(summary => {
-        audit('scheduler_run_now', `ok: ${summary}`)
+    let started: ReturnType<typeof startMission>
+    try {
+      started = startMission({
+        mission: task.mission,
+        args: parsedArgs,
+        source: 'dashboard',
+        title: name,
+        scheduledTaskId: task.id,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      logger.error({ err, task: name }, 'run-now enqueue failed')
+      return c.json({ ok: false, error: msg.slice(0, 400) }, 500)
+    }
+
+    const { missionTaskId, done } = started
+    audit('scheduler_run_now', `queued ${task.mission} as mission_task #${missionTaskId}`, {
+      ref_kind: 'mission_task',
+      ref_id: missionTaskId,
+    })
+    done
+      .then(result => {
+        if (!result.ok) {
+          logger.error({ result, task: name }, 'run-now mission failed')
+        }
       })
       .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err)
-        logger.error({ err, task: name }, 'run-now failed')
-        audit('scheduler_run_now', `error: ${msg}`, { blocked: false })
+        logger.error({ err, task: name }, 'run-now completion failed')
       })
 
-    return c.json({ ok: true, mission: task.mission, queued_at: Date.now() })
+    return c.json({
+      ok: true,
+      mission: task.mission,
+      mission_task_id: missionTaskId,
+      queued_at: Date.now(),
+    })
   })
 
   app.post('/api/scheduler/:name/pause', c => {
@@ -318,10 +344,44 @@ function buildApp(): Hono {
     if (gate) return gate
     return c.json({
       rows: rows(
-        `SELECT id, title, mission, assigned_agent, priority, status, result, started_at, completed_at, created_at
+        `SELECT id, title, mission, assigned_agent, priority, source, scheduled_task_id, status, result, started_at, completed_at, created_at
          FROM mission_tasks ORDER BY created_at DESC LIMIT 100`
       ),
     })
+  })
+
+  app.get('/api/transcript', c => {
+    const gate = requireToken(c)
+    if (gate) return gate
+    const kind = c.req.query('kind')
+    const id = c.req.query('id')
+    if (!kind || !id) {
+      return c.json({ ok: false, error: 'kind and id are required' }, 400)
+    }
+
+    if (kind === 'mission_task') {
+      const missionId = Number.parseInt(id, 10)
+      if (!Number.isSafeInteger(missionId) || missionId <= 0) {
+        return c.json({ ok: false, error: 'invalid mission task id' }, 400)
+      }
+      const row = one<Row>('SELECT * FROM mission_tasks WHERE id = ?', missionId)
+      if (!row) return c.json({ ok: false, error: 'not found' }, 404)
+      return c.json({ ok: true, kind, id: missionId, row })
+    }
+
+    if (kind === 'conversation') {
+      const transcriptRows = rows(
+        `SELECT id, session_id, chat_id, agent_id, role, content, created_at
+         FROM conversation_log WHERE session_id = ? ORDER BY created_at ASC`,
+        id
+      )
+      if (transcriptRows.length === 0) {
+        return c.json({ ok: false, error: 'not found' }, 404)
+      }
+      return c.json({ ok: true, kind, id, rows: transcriptRows })
+    }
+
+    return c.json({ ok: false, error: 'unknown transcript kind' }, 404)
   })
 
   app.post('/api/missions/:id/retry', c => {
@@ -531,6 +591,33 @@ function buildApp(): Hono {
         /* keep open */
       })
     })
+  })
+
+  app.post('/api/events/test', async c => {
+    const gate = requireToken(c)
+    if (gate) return gate
+    const ctGate = requireJson(c)
+    if (ctGate) return ctGate
+
+    let body: unknown
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ ok: false, error: 'invalid json' }, 400)
+    }
+    if (body !== null && (typeof body !== 'object' || Array.isArray(body))) {
+      return c.json({ ok: false, error: 'json body must be an object' }, 400)
+    }
+
+    const payload = (body ?? {}) as Record<string, unknown>
+    const chatId = typeof payload.chatId === 'string' ? payload.chatId : undefined
+    const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId : undefined
+    const category = typeof payload.category === 'string' ? payload.category : 'dashboard-test'
+    const message = typeof payload.message === 'string'
+      ? payload.message
+      : 'dashboard test event'
+    chatEvents.emit('chat_error', { chatId, sessionId, category, message })
+    return c.json({ ok: true, emitted: true })
   })
 
   return app
