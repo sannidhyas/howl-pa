@@ -30,6 +30,7 @@ import { BUILT_INS, nextRunFor } from './scheduler.js'
 import { routeCapture, type CaptureType } from './capture-router.js'
 import { chatEvents, type ChatEventPayload } from './state.js'
 import { dashboardHtml } from './dashboard-html.js'
+import { registerUsageRoute } from './usage.js'
 
 const DEFAULT_PORT = Number.parseInt(process.env.DASHBOARD_PORT ?? '3141', 10)
 const SESSION_COOKIE = 'hpa_session'
@@ -1134,6 +1135,8 @@ function buildApp(): Hono {
     chatEvents.emit('chat_error', { chatId, sessionId, category, message })
     return c.json({ ok: true, emitted: true, default_chat_id: ALLOWED_CHAT_ID })
   })
+
+  registerUsageRoute(app, requireAuth)
 
   return app
 }
