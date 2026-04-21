@@ -1,0 +1,18 @@
+{
+  "name": "howl-pa",
+  "owner": {
+    "name": "Sannidhya Sandheer"
+  },
+  "metadata": {
+    "description": "Howl PA — personal Mission Control. Telegram-first assistant with an Obsidian vault, Codex-first subagent routing, and an installable Claude Code companion.",
+    "homepage": "https://github.com/shrutiatulit/howl-pa"
+  },
+  "plugins": [
+    {
+      "name": "howl-pa",
+      "version": "0.0.1",
+      "source": "./claude-plugin",
+      "description": "Claude Code companion for a running Howl PA bot. MCP tools + /howl-* slash commands that expose scheduler, memory, and subagent routing telemetry."
+    }
+  ]
+}
