@@ -81,12 +81,61 @@ function one<T>(sql: string, ...args: unknown[]): T | undefined {
     .get(...(args as never[])) as T | undefined
 }
 
+function loginHtml(): string {
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Howl PA — sign in</title>
+<style>
+  html,body{height:100%;margin:0;background:#0b0c10;color:#edf0f6;font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px}
+  .card{background:#13151b;border:1px solid #272b36;border-radius:12px;padding:28px 30px;max-width:420px;width:100%;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+  h1{margin:0 0 4px 0;font-size:14px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#edf0f6;display:flex;align-items:center;gap:10px}
+  h1::before{content:'';width:8px;height:8px;border-radius:50%;background:#6fd19a;box-shadow:0 0 0 4px rgba(111,209,154,.15)}
+  p.sub{color:#a1a7b5;margin:0 0 18px 0;font-size:13px}
+  label{display:block;color:#a1a7b5;font-size:11px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;margin-top:10px}
+  input{width:100%;background:#0b0c10;color:#edf0f6;border:1px solid #272b36;border-radius:6px;padding:9px 11px;font:inherit;font-family:ui-monospace,"JetBrains Mono",SFMono-Regular,monospace;font-size:13px;box-sizing:border-box}
+  input:focus{outline:none;border-color:#4b8cc9;background:#191c24}
+  button{margin-top:16px;width:100%;background:#4b8cc9;border:1px solid #7cc5ff;color:#0b0c10;padding:10px;border-radius:6px;font:inherit;font-weight:500;cursor:pointer;transition:background .15s}
+  button:hover{background:#7cc5ff}
+  .hint{margin-top:16px;padding:10px 12px;background:#0b0c10;border:1px solid #272b36;border-radius:6px;font-size:12px;color:#a1a7b5}
+  .hint code{color:#7cc5ff;background:#21252f;padding:1px 6px;border-radius:3px;font-family:ui-monospace,"JetBrains Mono",monospace;font-size:11.5px}
+  .err{color:#f08a7a;font-size:12px;margin-top:8px;display:none}
+</style></head>
+<body><div class="wrap"><form class="card" onsubmit="return go(event)">
+  <h1>Howl PA</h1>
+  <p class="sub">Dashboard access token required.</p>
+  <label for="t">DASHBOARD_TOKEN</label>
+  <input id="t" autocomplete="off" autofocus placeholder="paste token" spellcheck="false" />
+  <div class="err" id="err">Token did not match. Try again.</div>
+  <button type="submit">Sign in</button>
+  <div class="hint">
+    Token lives in your config <code>.env</code> under <code>DASHBOARD_TOKEN</code>.<br/>
+    Find it: <code>grep DASHBOARD_TOKEN ~/.config/howl-pa/.env</code> (or wherever your <code>howl-pa setup</code> wrote it).
+  </div>
+</form></div>
+<script>
+  // Show an error hint if we landed here with a wrong ?token=… in the URL.
+  if (new URL(location.href).searchParams.get('token')) {
+    document.getElementById('err').style.display = 'block';
+  }
+  function go(ev){
+    ev.preventDefault();
+    const t = document.getElementById('t').value.trim();
+    if (!t) return false;
+    location.href = '/?token=' + encodeURIComponent(t);
+    return false;
+  }
+</script>
+</body></html>`
+}
+
 function buildApp(): Hono {
   const app = new Hono()
 
   app.get('/', c => {
-    const gate = requireToken(c)
-    if (gate) return gate
+    const token = c.req.query('token') ?? c.req.header('x-dashboard-token')
+    if (!verifyToken(token)) return c.html(loginHtml(), 401)
     return c.html(dashboardHtml(resolveToken()))
   })
 
@@ -497,7 +546,10 @@ export function startDashboard(): void {
   }
   const app = buildApp()
   server = serve({ fetch: app.fetch, port: DEFAULT_PORT, hostname: '127.0.0.1' })
-  logger.info({ url: `http://localhost:${DEFAULT_PORT}/?token=${token.slice(0, 6)}…` }, 'dashboard online')
+  logger.info(
+    { url: `http://localhost:${DEFAULT_PORT}/?token=${token}` },
+    'dashboard online — open this URL in a browser on this host'
+  )
 }
 
 export function stopDashboard(): void {
