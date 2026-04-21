@@ -1,6 +1,6 @@
 import { svgMark, svgFavicon } from './logo.js'
 
-export function dashboardHtml(token: string): string {
+export function dashboardHtml(token: string, username = 'howl'): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -96,6 +96,19 @@ export function dashboardHtml(token: string): string {
       font-size: 12px;
       color: var(--fg-dim);
     }
+    .user-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      color: var(--fg-muted);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-size: 11.5px;
+    }
+    .user-chip svg { color: var(--accent); }
     .spacer { flex: 1; }
     .search {
       position: relative;
@@ -941,6 +954,10 @@ export function dashboardHtml(token: string): string {
       <div class="search">
         <input id="search" placeholder="Search (press /)" autocomplete="off" />
         <kbd>/</kbd>
+      </div>
+      <div class="user-chip" title="Signed in as ${username}">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><circle cx="8" cy="5.5" r="3" fill="currentColor"/><path d="M2 14 C2 10 4 9 8 9 C12 9 14 10 14 14 Z" fill="currentColor"/></svg>
+        <span>${username}</span>
       </div>
       <button class="btn ghost" id="help-btn" title="Keyboard shortcuts (?)">?</button>
       <button class="btn ghost" id="logout-btn" title="Sign out">⎋</button>

@@ -31,6 +31,25 @@ export function textOneLine(): string {
   return `${BOLD}${FG}Howl PA${RESET} ${VIOLET}· personal mission control${RESET}`
 }
 
+// Optional animated boot — runs only if stdout is a TTY. Short neon sweep
+// across "HOWL PA" for ~1.1s, then stops. Safe in systemd journal because
+// it no-ops when isTTY is false. Returns a promise that resolves when
+// the animation finishes; callers can ignore it.
+export async function animateBanner(): Promise<void> {
+  if (!process.stdout.isTTY) return
+  try {
+    const mod = (await import('chalk-animation' as string)) as {
+      default: { neon: (text: string) => { stop(): void } }
+    }
+    const anim = mod.default.neon('\n   H O W L   P A   —   personal mission control\n')
+    await new Promise<void>(resolve => setTimeout(resolve, 1100))
+    anim.stop()
+    process.stdout.write('\n')
+  } catch {
+    // If chalk-animation is missing for some reason, fall back silently.
+  }
+}
+
 // Inline SVG wolf mark — aggressive snarling head with tall swept-back
 // ears, angular cheekbones, narrowed eye slits, bared fangs. Fills with
 // `currentColor`; cut-outs use the dashboard dark background so the face

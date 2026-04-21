@@ -379,15 +379,15 @@ function buildApp(): Hono {
 
   app.get('/', c => {
     const token = c.req.query('token') ?? c.req.header('x-dashboard-token')
-    if (verifyToken(token)) return c.html(dashboardHtml(resolveToken()))
+    if (verifyToken(token)) return c.html(dashboardHtml(resolveToken(), liveUsername()))
     const cookieHeader = c.req.header('cookie') ?? ''
     const cookieVal = cookieHeader.split(';').map(s => s.trim()).find(s => s.startsWith(SESSION_COOKIE + '='))?.slice(SESSION_COOKIE.length + 1)
-    if (verifySession(cookieVal)) return c.html(dashboardHtml(resolveToken()))
+    if (verifySession(cookieVal)) return c.html(dashboardHtml(resolveToken(), liveUsername()))
     const basic = c.req.header('authorization')
     if (basic?.startsWith('Basic ')) {
       const decoded = Buffer.from(basic.slice(6), 'base64').toString('utf8')
       const colon = decoded.indexOf(':')
-      if (colon >= 0 && verifyPassword(decoded.slice(0, colon), decoded.slice(colon + 1))) return c.html(dashboardHtml(resolveToken()))
+      if (colon >= 0 && verifyPassword(decoded.slice(0, colon), decoded.slice(colon + 1))) return c.html(dashboardHtml(resolveToken(), liveUsername()))
     }
     return c.html(loginHtml(), 401)
   })

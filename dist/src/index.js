@@ -9,7 +9,7 @@ import { initScheduler, stopScheduler } from './scheduler.js';
 import { startDashboard, stopDashboard } from './dashboard.js';
 import { ensureHiveMindSchema } from './orchestrator.js';
 import { startAllSpecialistBots } from './agent-bot.js';
-import { textBanner, textOneLine } from './logo.js';
+import { textBanner, textOneLine, animateBanner } from './logo.js';
 function acquireLock() {
     mkdirSync(dirname(LOCK_PATH), { recursive: true });
     if (existsSync(LOCK_PATH)) {
@@ -44,6 +44,7 @@ async function main() {
     // terminals get the tinted version.
     process.stderr.write(textBanner());
     process.stderr.write('  ' + textOneLine() + '\n\n');
+    await animateBanner();
     logger.info({ root: PROJECT_ROOT, store: STORE_DIR }, 'howl-pa starting');
     acquireLock();
     initDatabase();
