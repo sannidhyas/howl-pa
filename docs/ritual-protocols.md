@@ -29,7 +29,7 @@ Mission: `evening-nudge`. Reads today's daily frontmatter. For every required fl
 
 Mission: `weekly-review`. Walks `08_Pipeline/ideas/` parked ideas, composes a weekly summary into `05_Progress/<week>.md` with links to artifacts and misses, and asks you to triage each pending idea (`open <slug>`, `park`, `discard`).
 
-## Venture review — Sunday 18:30 (`academic` + `venture` profiles only)
+## Venture review — Sunday 18:30
 
 Mission: `venture-review`. Summarizes active `06_Projects/6N_*/`: last commit per project, last note in the project log, next milestone if specified. Writes into the same weekly progress file.
 

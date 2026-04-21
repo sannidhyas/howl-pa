@@ -2,16 +2,6 @@
 
 Howl PA's defaults encode a specific daily flow (author's). Every piece is a short TypeScript file, so fork-and-edit is the normal path. This doc maps intent to the file that owns it.
 
-## Profile toggle
-
-Set `HOWL_PROFILE` in `.env`:
-
-- `neutral` (default) — brief, ritual, nudge, tracker, vault reindex, weekly review, ingestion. No venture review, no thesis mirror.
-- `academic` — adds the thesis-mirror flow and the venture review (most academic users run projects too).
-- `venture` — adds the venture review only.
-
-Gating lives in `src/scheduler.ts` (`profiles` field on each built-in).
-
 ## Daily note frontmatter
 
 `src/vault.ts` → `ensureDailyNote()` generates today's daily note from `02_Templates/Daily (Template).md` and fills frontmatter based on weekday. Default rules:
@@ -37,7 +27,9 @@ The arrays at the top of the file are the full question list. Delete or reword f
 
 1. Create `src/missions/my-mission.ts` exporting `const myMission: MissionFn = async (ctx) => { … return { summary: '…' } }`
 2. Register in `src/missions/index.ts`
-3. Add a row to `BUILT_INS` in `src/scheduler.ts` (set `profiles: ['neutral']` etc. to gate)
+3. Add a row to `BUILT_INS` in `src/scheduler.ts`
+
+Pause or delete any built-in via the dashboard Routines tab or via `/schedule pause <name>` in Telegram.
 
 ## Vault folder names
 

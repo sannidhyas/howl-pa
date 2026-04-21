@@ -45,8 +45,8 @@
 ### Scheduler
 
 - Cron-parser driven 60-second tick
-- 12 built-in missions (morning-brief, morning-ritual, evening-nudge, evening-tracker, vault-reindex, weekly-review, venture-review, gmail-poll, gmail-classify, calendar-poll, tasks-poll, tasks-push)
-- Stuck-task recovery on init
+- 12 built-in missions — all run by default; pause or delete any via `/schedule pause <name>` in Telegram or the dashboard Routines tab
+- Stuck-task recovery on init; paused status is preserved across restarts
 - User-defined missions via `/schedule` or programmatic `upsertScheduledTask()`
 
 ### Rituals

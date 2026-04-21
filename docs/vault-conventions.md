@@ -66,4 +66,4 @@ Every bot write is committed by `src/vault-writer.ts` with a `[mc] <op>: <path>`
 
 ## Literature pipeline
 
-If you use ZotLit (Zotero → Obsidian), Howl PA's thesis-mirror mission respects its callout format: summaries land inside `> [!howl-summary]` blocks appended to existing `04_Notes/41_Literature/<citekey>.md` files. The mission is gated behind `HOWL_PROFILE=academic`; see [customization.md](./customization.md).
+If you use ZotLit (Zotero → Obsidian), Howl PA's thesis-mirror mission respects its callout format: summaries land inside `> [!howl-summary]` blocks appended to existing `04_Notes/41_Literature/<citekey>.md` files. Run it on demand with `/mirror-thesis` or trigger it from the dashboard.

@@ -98,7 +98,7 @@ All defined in `src/scheduler.ts:BUILT_INS`, implemented in `src/missions/*.ts`.
 | `evening-tracker` | `5 21 * * *` | Multi-turn survey: sleep hours, energy, soreness, swim, sport, kit, meditation, reflection |
 | `vault-reindex` | `*/10 * * * *` | Re-embed modified vault files |
 | `weekly-review` | `0 18 * * 0` | Compose weekly review into `05_Progress/<week>.md`, triage parked ideas |
-| `venture-review` | `30 18 * * 0` | Summarize active projects — last commit, last log entry, next milestone |
+| `venture-review` | `30 18 * * 0` | Summarize active projects — last commit, last log entry, next milestone. Pause with `/schedule pause venture-review` if not relevant. |
 | `gmail-poll` | `*/5 * * * *` | Fetch new inbox messages |
 | `gmail-classify` | `*/7 * * * *` | LLM-score pending messages for importance |
 | `calendar-poll` | `*/15 * * * *` | Refresh events cache |

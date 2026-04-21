@@ -27,26 +27,18 @@ const ROUTINE_GROUPS = [
     { title: 'Weekly', names: ['weekly-review', 'venture-review'] },
     { title: 'Vault', names: ['vault-reindex'] },
 ];
-function activeHowlProfile() {
-    const raw = (process.env.HOWL_PROFILE ?? 'neutral').toLowerCase();
-    return raw === 'academic' || raw === 'venture' ? raw : 'neutral';
-}
-function formatRoutineLine(task, status, profile) {
+function formatRoutineLine(task, status) {
     const paused = status === 'paused' ? ' (paused)' : '';
-    const disabled = task.profiles && !task.profiles.some(p => p === profile)
-        ? ` (disabled for HOWL_PROFILE=${escapeHtml(profile)})`
-        : '';
-    return `• <code>${escapeHtml(task.name)}</code> — ${escapeHtml(cronHuman(task.schedule))} — ${escapeHtml(task.description)}${paused}${disabled}`;
+    return `• <code>${escapeHtml(task.name)}</code> — ${escapeHtml(cronHuman(task.schedule))} — ${escapeHtml(task.description)}${paused}`;
 }
 function routinesHtml() {
-    const profile = activeHowlProfile();
     const statusByName = new Map(listScheduledTasks().map(t => [t.name, t.status]));
     const builtInByName = new Map(BUILT_INS.map(b => [b.name, b]));
     const sections = ROUTINE_GROUPS.map(group => {
         const lines = group.names
             .map(name => builtInByName.get(name))
             .filter((task) => Boolean(task))
-            .map(task => formatRoutineLine(task, statusByName.get(task.name), profile))
+            .map(task => formatRoutineLine(task, statusByName.get(task.name)))
             .join('\n');
         return `<b>${group.title}</b>\n${lines}`;
     });

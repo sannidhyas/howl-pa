@@ -168,13 +168,6 @@ async function main() {
     console.log('\n── Paths ──');
     await maybeUpdate(existing, 'VAULT_PATH', 'Obsidian vault path');
     await maybeUpdate(existing, 'THESIS_PATH', 'Thesis/paper drive (blank to skip thesis-mirror)');
-    console.log('\n── Profile ──');
-    const profileOpts = 'neutral | academic | venture';
-    await maybeUpdate(existing, 'HOWL_PROFILE', `Profile (${profileOpts})`, {
-        validator: v => ['neutral', 'academic', 'venture'].includes(v) || `one of: ${profileOpts}`,
-    });
-    if (!existing.HOWL_PROFILE)
-        existing.HOWL_PROFILE = 'neutral';
     console.log('\n── Dashboard ──');
     if (!existing.DASHBOARD_TOKEN) {
         existing.DASHBOARD_TOKEN = randomBytes(24).toString('base64url');
@@ -189,10 +182,12 @@ async function main() {
         existing.OLLAMA_URL = 'http://localhost:11434';
     if (!existing.OLLAMA_EMBED_MODEL)
         existing.OLLAMA_EMBED_MODEL = 'nomic-embed-text';
+    // Silently remove any legacy HOWL_PROFILE key so the env stays clean.
+    delete existing.HOWL_PROFILE;
     writeFileSync(envPath, serializeEnv(existing), { mode: 0o600 });
     chmodSync(envPath, 0o600);
     console.log(`\n✅ wrote ${envPath}`);
-    console.log(`   PIN=${existing.PIN_HASH ? 'set' : 'unset'} · KILL_PHRASE=${existing.KILL_PHRASE ? 'set' : 'unset'} · PROFILE=${existing.HOWL_PROFILE}`);
+    console.log(`   PIN=${existing.PIN_HASH ? 'set' : 'unset'} · KILL_PHRASE=${existing.KILL_PHRASE ? 'set' : 'unset'}`);
     console.log(`   Dashboard: http://localhost:${existing.DASHBOARD_PORT}/?token=${existing.DASHBOARD_TOKEN}`);
     preflight();
     const vault = expand(existing.VAULT_PATH ?? '~/Documents/vault');

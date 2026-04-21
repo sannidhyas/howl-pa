@@ -94,7 +94,6 @@ The wizard prompts for:
 - Idle lock minutes (default 30)
 - Vault path (default `~/Documents/vault`)
 - Optional thesis drive path (leave blank if you don't use the thesis-mirror feature)
-- Profile (`neutral`, `academic`, or `venture`)
 
 It generates `DASHBOARD_TOKEN` for you, writes `$XDG_CONFIG_HOME/howl-pa/.env` with mode `0600`, and runs pre-flight checks (Node version, Codex on PATH, Ollama reachable).
 
@@ -121,18 +120,7 @@ Howl PA expects a specific folder layout — see [vault-conventions.md](./vault-
 
 If you don't already have a vault, create these empty folders. The bot auto-generates daily notes and idea folders inside them.
 
-## 7. (Optional) Change the profile and rituals
-
-The `HOWL_PROFILE` env var selects which scheduled missions run:
-
-- `neutral` (default) — only brief + ritual + ingestion. No thesis, no venture review.
-- `academic` — adds `mirror-thesis` mission (requires `THESIS_PATH`).
-- `venture` — adds `venture-review` mission (looks at `06_Projects/6N_*/`).
-
-The morning/evening ritual questions live in `src/rituals.ts`. Fork the repo if you want a different question pack — a data-driven override lands in a later release.
-
-## 8. Start the bot
-
+## 7. Start the bot
 ```sh
 howl-pa start
 ```
@@ -151,7 +139,7 @@ DM your bot on Telegram. You should get a PIN prompt. Unlock, then:
 - `/capture hello world` — test capture round-trip
 - `/task-add buy coffee` — should appear in your Google Tasks app within 5 minutes
 
-## 9. (Optional) Install the Claude Code plugin
+## 8. (Optional) Install the Claude Code plugin
 
 So you can inspect bot state from any CC session without opening the dashboard:
 
