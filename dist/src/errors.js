@@ -5,6 +5,8 @@ const CATEGORY_PATTERNS = [
     [/timeout|ETIMEDOUT|ETIMEOUT|timed out/i, 'timeout'],
     [/ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|network|fetch failed|socket hang up/i, 'network'],
     [/tool.*(error|failed)|bad tool input/i, 'tool_error'],
+    // SDK result failure subtypes are terminal for this run; don't retry.
+    [/error_during_execution|error_max_turns|error_max_budget/i, 'tool_error'],
     [/abort|cancelled|canceled/i, 'user_abort'],
 ];
 export function classifyError(err) {

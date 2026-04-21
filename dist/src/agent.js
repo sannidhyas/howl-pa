@@ -63,7 +63,9 @@ export async function runAgent(input) {
                             result.model = firstModel;
                     }
                     else {
-                        throw new Error(`agent run failed: ${message.subtype}`);
+                        const errMsg = message.errors?.join('; ') ?? '';
+                        logger.error({ message, chatId: input.chatId, agentId }, 'claude agent SDK returned non-success result');
+                        throw new Error(`agent run failed: ${message.subtype}${errMsg ? ` — ${errMsg}` : ''}`);
                     }
                     break;
             }

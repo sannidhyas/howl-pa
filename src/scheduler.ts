@@ -32,10 +32,11 @@ let state: { timer: NodeJS.Timeout | null; opts: SchedulerOptions | null } = {
 
 type Profile = 'neutral' | 'academic' | 'venture'
 
-type BuiltIn = {
+export type BuiltIn = {
   name: string
   mission: string
   schedule: string
+  description: string
   priority: number
   profiles?: Profile[]
 }
@@ -46,19 +47,19 @@ type BuiltIn = {
 //
 // Default HOWL_PROFILE is 'neutral' — minimal surface. Set `academic` to
 // enable thesis-mirror-style flows, `venture` to enable the venture review.
-const BUILT_INS: BuiltIn[] = [
-  { name: 'morning-brief', mission: 'morning-brief', schedule: '0 7 * * *', priority: 10 },
-  { name: 'morning-ritual', mission: 'morning-ritual', schedule: '5 7 * * *', priority: 9 },
-  { name: 'evening-nudge', mission: 'evening-nudge', schedule: '0 21 * * *', priority: 8 },
-  { name: 'evening-tracker', mission: 'evening-tracker', schedule: '5 21 * * *', priority: 8 },
-  { name: 'vault-reindex', mission: 'vault-reindex', schedule: '*/10 * * * *', priority: 1 },
-  { name: 'weekly-review', mission: 'weekly-review', schedule: '0 18 * * 0', priority: 5 },
-  { name: 'venture-review', mission: 'venture-review', schedule: '30 18 * * 0', priority: 5, profiles: ['venture', 'academic'] },
-  { name: 'gmail-poll', mission: 'gmail-poll', schedule: '*/5 * * * *', priority: 2 },
-  { name: 'gmail-classify', mission: 'gmail-classify', schedule: '*/7 * * * *', priority: 3 },
-  { name: 'calendar-poll', mission: 'calendar-poll', schedule: '*/15 * * * *', priority: 2 },
-  { name: 'tasks-poll', mission: 'tasks-poll', schedule: '*/5 * * * *', priority: 2 },
-  { name: 'tasks-push', mission: 'tasks-push', schedule: '*/5 * * * *', priority: 3 },
+export const BUILT_INS: BuiltIn[] = [
+  { name: 'morning-brief', mission: 'morning-brief', schedule: '0 7 * * *', description: 'Composes the daily brief from vault + calendar + tasks and sends it to Telegram', priority: 10 },
+  { name: 'morning-ritual', mission: 'morning-ritual', schedule: '5 7 * * *', description: 'Asks focus, thesis artifact, venture artifact, and 3 needle tasks for the day', priority: 9 },
+  { name: 'evening-nudge', mission: 'evening-nudge', schedule: '0 21 * * *', description: "Checks today's gym, thesis, kit, and meditation flags; sends a nudge for each open item", priority: 8 },
+  { name: 'evening-tracker', mission: 'evening-tracker', schedule: '5 21 * * *', description: 'Logs sleep hours, energy, soreness, sport, and reflection via a short survey', priority: 8 },
+  { name: 'vault-reindex', mission: 'vault-reindex', schedule: '*/10 * * * *', description: 'Crawls the Obsidian vault and refreshes the memory chunk index in SQLite', priority: 1 },
+  { name: 'weekly-review', mission: 'weekly-review', schedule: '0 18 * * 0', description: 'Writes the ISO-week review scaffold note to vault (days, captures, ideas touched)', priority: 5 },
+  { name: 'venture-review', mission: 'venture-review', schedule: '30 18 * * 0', description: 'Walks through parked ideas from the week with a keep/open/discard survey', priority: 5, profiles: ['venture', 'academic'] },
+  { name: 'gmail-poll', mission: 'gmail-poll', schedule: '*/5 * * * *', description: 'Fetches new priority-inbox messages from Gmail and stores them in the DB', priority: 2 },
+  { name: 'gmail-classify', mission: 'gmail-classify', schedule: '*/7 * * * *', description: 'Scores unclassified Gmail items for importance via Ollama/Claude', priority: 3 },
+  { name: 'calendar-poll', mission: 'calendar-poll', schedule: '*/15 * * * *', description: 'Syncs upcoming Google Calendar events into the local DB', priority: 2 },
+  { name: 'tasks-poll', mission: 'tasks-poll', schedule: '*/5 * * * *', description: 'Pulls Google Tasks from the API and upserts them into the local DB', priority: 2 },
+  { name: 'tasks-push', mission: 'tasks-push', schedule: '*/5 * * * *', description: 'Pushes locally-captured tasks back to Google Tasks via the API', priority: 3 },
 ]
 
 function activeProfile(): Profile {

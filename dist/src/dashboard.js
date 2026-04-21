@@ -211,7 +211,7 @@ function buildApp() {
             subscribe('message_received');
             subscribe('agent_started');
             subscribe('agent_completed');
-            subscribe('error');
+            subscribe('chat_error');
             subscribe('session_end');
             const ping = setInterval(() => void stream.writeSSE({ event: 'ping', data: String(Date.now()) }).catch(() => { }), 30_000);
             ping.unref();

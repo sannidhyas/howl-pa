@@ -256,7 +256,7 @@ export function dashboardHtml(token) {
     function startLive(){
       const feed = document.getElementById('live-feed');
       const es = new EventSource('/api/events' + qs);
-      ['session_start','message_received','agent_started','agent_completed','error','session_end','ping'].forEach(name => {
+      ['session_start','message_received','agent_started','agent_completed','chat_error','session_end','ping'].forEach(name => {
         es.addEventListener(name, (ev) => {
           const data = (() => { try { return JSON.parse(ev.data); } catch { return ev.data; } })();
           const line = document.createElement('div');

@@ -4,8 +4,9 @@ import { logger } from './logger.js';
 import { executeEmergencyKill, checkIdleLock, isLocked, isSecurityEnabled, lock, matchesKillPhrase, touchActivity, unlock, } from './security.js';
 import { redactSecrets, scanForSecrets } from './exfiltration-guard.js';
 import { runAgentWithRetry } from './agent.js';
-import { audit, deleteScheduledTask, latestSessionFor, listMissionTasks, setTaskStatus, } from './db.js';
-import { runMissionByName, scheduledTaskSummary } from './scheduler.js';
+import { audit, deleteScheduledTask, latestSessionFor, listMissionTasks, listScheduledTasks, setTaskStatus, } from './db.js';
+import { BUILT_INS, runMissionByName, scheduledTaskSummary } from './scheduler.js';
+import { cronHuman } from './cron-human.js';
 import { recall } from './memory.js';
 import { BACKENDS, availableBackends, dispatchSubagent, } from './subagent/router.js';
 import { parseDelegation, routeDelegation } from './orchestrator.js';
@@ -20,6 +21,37 @@ import { chatEvents } from './state.js';
 import { completeTask, pushPendingTasks, shortTaskId, taskRows } from './tasks.js';
 import { escapeHtml, formatMirrorResultHtml, formatRecallHtml, formatReindexResultHtml, } from './format-telegram.js';
 const MAX_TELEGRAM_TEXT = 4096;
+const ROUTINE_GROUPS = [
+    { title: 'Daily', names: ['morning-brief', 'morning-ritual', 'evening-nudge', 'evening-tracker'] },
+    { title: 'Polling', names: ['gmail-poll', 'gmail-classify', 'calendar-poll', 'tasks-poll', 'tasks-push'] },
+    { title: 'Weekly', names: ['weekly-review', 'venture-review'] },
+    { title: 'Vault', names: ['vault-reindex'] },
+];
+function activeHowlProfile() {
+    const raw = (process.env.HOWL_PROFILE ?? 'neutral').toLowerCase();
+    return raw === 'academic' || raw === 'venture' ? raw : 'neutral';
+}
+function formatRoutineLine(task, status, profile) {
+    const paused = status === 'paused' ? ' (paused)' : '';
+    const disabled = task.profiles && !task.profiles.some(p => p === profile)
+        ? ` (disabled for HOWL_PROFILE=${escapeHtml(profile)})`
+        : '';
+    return `• <code>${escapeHtml(task.name)}</code> — ${escapeHtml(cronHuman(task.schedule))} — ${escapeHtml(task.description)}${paused}${disabled}`;
+}
+function routinesHtml() {
+    const profile = activeHowlProfile();
+    const statusByName = new Map(listScheduledTasks().map(t => [t.name, t.status]));
+    const builtInByName = new Map(BUILT_INS.map(b => [b.name, b]));
+    const sections = ROUTINE_GROUPS.map(group => {
+        const lines = group.names
+            .map(name => builtInByName.get(name))
+            .filter((task) => Boolean(task))
+            .map(task => formatRoutineLine(task, statusByName.get(task.name), profile))
+            .join('\n');
+        return `<b>${group.title}</b>\n${lines}`;
+    });
+    return `<b>Built-in routines</b>\n\n${sections.join('\n\n')}\n\nPause/resume: <code>/schedule pause &lt;name&gt;</code>, <code>/schedule resume &lt;name&gt;</code>\nRun now: <code>/mission run &lt;name&gt;</code>`;
+}
 const queues = new Map();
 const processing = new Set();
 function enqueue(chatId, job) {
@@ -134,6 +166,12 @@ async function handleCommand(ctx, text) {
             await ctx.reply('reindexing vault…');
             const result = await reindexVault();
             await sendHtml(ctx, formatReindexResultHtml(result));
+            return true;
+        }
+        case '/builtins':
+        case '/routine':
+        case '/routines': {
+            await sendHtml(ctx, routinesHtml());
             return true;
         }
         case '/mirror-thesis': {
@@ -276,7 +314,7 @@ async function handleCommand(ctx, text) {
                 '<code>/capture &lt;text&gt;</code> · <code>/note</code> · <code>/idea</code> · <code>/task</code> · <code>/task-add</code> · <code>/task-list</code> · <code>/task-done</code>',
                 '<code>/thesis</code> · <code>/literature</code> · <code>/journal</code>',
                 '<code>/recall &lt;query&gt;</code> · <code>/reindex</code> · <code>/mirror-thesis [--force]</code>',
-                '<code>/brief</code> · <code>/nudge</code> · <code>/schedule list|pause|resume|delete</code> · <code>/mission list|run</code>',
+                '<code>/brief</code> · <code>/nudge</code> · <code>/routines</code> · <code>/schedule list|pause|resume|delete</code> · <code>/mission list|run</code>',
                 '<code>/ask [backend] &lt;prompt&gt;</code> · <code>/council [aggregator] &lt;prompt&gt;</code> · <code>/backends</code>',
             ].join('\n'));
             return true;
@@ -538,7 +576,7 @@ async function processMessage(ctx, text) {
         const msg = err instanceof Error ? err.message : String(err);
         await ctx.reply(`⚠️ agent error: ${msg.slice(0, 400)}`).catch(() => { });
         audit('message', `agent error: ${msg.slice(0, 200)}`, { chatId });
-        chatEvents.emit('error', {
+        chatEvents.emit('chat_error', {
             chatId,
             category: 'agent',
             message: msg.slice(0, 400),
