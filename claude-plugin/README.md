@@ -29,7 +29,7 @@ Export `HOWL_DASHBOARD_TOKEN` before launching Claude Code so the MCP server can
 ## Install
 
 ```
-claude plugin marketplace add shrutiatulit/howl-pa
+claude plugin marketplace add sannidhyas/howl-pa
 claude plugin install howl-pa@howl-pa
 ```
 

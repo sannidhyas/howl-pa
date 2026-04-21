@@ -6,15 +6,15 @@
   "license": "MIT",
   "author": {
     "name": "Sannidhya Sandheer",
-    "email": "shrutiatulit@gmail.com"
+    "email": "phd23sannidhyas@iima.ac.in"
   },
-  "homepage": "https://github.com/shrutiatulit/howl-pa",
+  "homepage": "https://github.com/sannidhyas/howl-pa",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/shrutiatulit/howl-pa.git"
+    "url": "git+https://github.com/sannidhyas/howl-pa.git"
   },
   "bugs": {
-    "url": "https://github.com/shrutiatulit/howl-pa/issues"
+    "url": "https://github.com/sannidhyas/howl-pa/issues"
   },
   "keywords": [
     "telegram",

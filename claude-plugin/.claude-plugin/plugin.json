@@ -4,9 +4,9 @@
   "description": "Claude Code companion for Howl PA. Exposes the running bot's state (scheduler, subagent telemetry, memory, audit) to any CC session via MCP tools and /howl-* slash commands.",
   "author": {
     "name": "Sannidhya Sandheer",
-    "email": "shrutiatulit@gmail.com"
+    "email": "phd23sannidhyas@iima.ac.in"
   },
   "license": "MIT",
-  "homepage": "https://github.com/shrutiatulit/howl-pa",
+  "homepage": "https://github.com/sannidhyas/howl-pa",
   "keywords": ["howl-pa", "telegram", "obsidian", "mission-control"]
 }
