@@ -1,0 +1,1 @@
+{"version":3,"file":"text.js","sourceRoot":"","sources":["../../../src/extractors/text.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,QAAQ,EAAE,MAAM,kBAAkB,CAAA;AAE3C,MAAM,CAAC,KAAK,UAAU,WAAW,CAAC,IAAY;IAC5C,MAAM,GAAG,GAAG,MAAM,QAAQ,CAAC,IAAI,EAAE,MAAM,CAAC,CAAA;IACxC,OAAO,GAAG,CAAC,OAAO,CAAC,OAAO,EAAE,IAAI,CAAC,CAAA;AACnC,CAAC"}

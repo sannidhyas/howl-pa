@@ -1,0 +1,1 @@
+{"version":3,"file":"docx.js","sourceRoot":"","sources":["../../../src/extractors/docx.ts"],"names":[],"mappings":"AAAA,OAAO,OAAO,MAAM,SAAS,CAAA;AAE7B,MAAM,CAAC,KAAK,UAAU,WAAW,CAAC,IAAY;IAC5C,MAAM,GAAG,GAAG,MAAM,OAAO,CAAC,cAAc,CAAC,EAAE,IAAI,EAAE,CAAC,CAAA;IAClD,OAAO,GAAG,CAAC,KAAK,CAAA;AAClB,CAAC"}

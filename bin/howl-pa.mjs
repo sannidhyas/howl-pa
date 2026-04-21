@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Howl PA CLI entrypoint. Dispatches to compiled dist/ for `start`, and to
-// tsx-invoked scripts/*.ts for setup/health operations that are interactive.
+// Howl PA CLI entrypoint. Dispatches to precompiled dist/ scripts for all
+// subcommands so a bare `npm i -g` works without tsx or a TypeScript toolchain
+// on the target machine.
 
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -11,12 +12,12 @@ import { fileURLToPath } from 'node:url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const pkgRoot = resolve(__dirname, '..')
-const distIndex = join(pkgRoot, 'dist', 'index.js')
+const distRoot = join(pkgRoot, 'dist')
 
 const USAGE = `howl-pa <command>
 
 Commands:
-  start           Launch the bot + scheduler + dashboard (requires build)
+  start           Launch the bot + scheduler + dashboard
   setup           Interactive first-run wizard (PIN, kill phrase, Telegram)
   setup:google    Google OAuth flow for Gmail, Calendar, and Tasks scopes
   health          Print a status report for bot, vault, Google, Ollama
@@ -29,32 +30,16 @@ Env: set HOWL_CONFIG or CLAUDECLAW_CONFIG to override the config dir.
      or ~/.config/howl-pa.
 `
 
-function runTsx(script, args) {
-  const require = createRequire(import.meta.url)
-  let tsxCli
-  try {
-    tsxCli = require.resolve('tsx/cli', { paths: [pkgRoot] })
-  } catch {
-    console.error('tsx not installed. Reinstall howl-pa or add tsx as a dev dep.')
+function runNode(relPath, args, { sourceMaps = false } = {}) {
+  const target = join(distRoot, relPath)
+  if (!existsSync(target)) {
+    console.error(`dist file missing: ${relPath}`)
+    console.error('Reinstall howl-pa, or build from source with `npm run build`.')
     process.exit(1)
   }
-  const res = spawnSync(process.execPath, [tsxCli, join(pkgRoot, script), ...args], {
-    stdio: 'inherit',
-    cwd: process.cwd(),
-  })
+  const nodeArgs = sourceMaps ? ['--enable-source-maps', target, ...args] : [target, ...args]
+  const res = spawnSync(process.execPath, nodeArgs, { stdio: 'inherit', cwd: process.cwd() })
   process.exit(res.status ?? 1)
-}
-
-function runStart(args) {
-  if (!existsSync(distIndex)) {
-    console.error('dist/index.js missing. Run `npm run build` inside the howl-pa source tree first.')
-    process.exit(1)
-  }
-  const res = spawnSync(process.execPath, ['--enable-source-maps', distIndex, ...args], {
-    stdio: 'inherit',
-    cwd: process.cwd(),
-  })
-  process.exit(res.status ?? 0)
 }
 
 function printVersion() {
@@ -73,24 +58,24 @@ switch (cmd) {
     process.stdout.write(USAGE)
     break
   case 'start':
-    runStart(args)
+    runNode('src/index.js', args, { sourceMaps: true })
     break
   case 'setup':
-    runTsx('scripts/setup.ts', args)
+    runNode('scripts/setup.js', args)
     break
   case 'setup:google':
   case 'google:auth':
-    runTsx('scripts/setup-google.ts', args)
+    runNode('scripts/setup-google.js', args)
     break
   case 'health':
-    runTsx('scripts/health.ts', args)
+    runNode('scripts/health.js', args)
     break
   case 'howl':
   case 'agent':
-    runTsx('scripts/howl.ts', args)
+    runNode('scripts/howl.js', args)
     break
   case 'council':
-    runTsx('scripts/ollama-council.ts', args)
+    runNode('scripts/ollama-council.js', args)
     break
   case 'version':
   case '--version':

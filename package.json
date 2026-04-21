@@ -1,6 +1,6 @@
 {
   "name": "howl-pa",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Howl PA — personal Mission Control. Telegram-first assistant that maintains an Obsidian vault, ingests Gmail/Calendar/Google Tasks, and spawns Codex or Claude subagents.",
   "type": "module",
   "license": "MIT",
@@ -44,14 +44,14 @@
     "README.md"
   ],
   "scripts": {
-    "start": "node --enable-source-maps dist/index.js",
+    "start": "node --enable-source-maps dist/src/index.js",
     "build": "tsc -p .",
     "dev": "tsx watch src/index.ts",
-    "setup": "tsx scripts/setup.ts",
-    "howl": "tsx scripts/howl.ts",
-    "council": "tsx scripts/ollama-council.ts",
-    "setup:google": "tsx scripts/setup-google.ts",
-    "health": "tsx scripts/health.ts",
+    "setup": "node dist/scripts/setup.js",
+    "howl": "node dist/scripts/howl.js",
+    "council": "node dist/scripts/ollama-council.js",
+    "setup:google": "node dist/scripts/setup-google.js",
+    "health": "node dist/scripts/health.js",
     "typecheck": "tsc -p . --noEmit",
     "prepublishOnly": "npm run typecheck && npm run build"
   },
@@ -67,13 +67,13 @@
     "mammoth": "^1.12.0",
     "pino": "^9.5.0",
     "simple-git": "^3.27.0",
-    "tsx": "^4.19.2",
     "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.9.0",
     "pino-pretty": "^11.3.0",
+    "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   },
   "publishConfig": {
