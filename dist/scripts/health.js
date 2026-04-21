@@ -1,7 +1,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { AGENT_TIMEOUT_MS, CLAUDECLAW_CONFIG, DB_PATH, PROJECT_ROOT, VAULT_PATH, rawEnv, } from '../src/config.js';
+import { AGENT_TIMEOUT_MS, HOWL_CONFIG_DIR, DB_PATH, PROJECT_ROOT, VAULT_PATH, rawEnv, } from '../src/config.js';
 import { closeDatabase, getDb, initDatabase } from '../src/db.js';
 import { googleAuthConfigured, googleTokenSaved } from '../src/google-auth.js';
 import { isTasksReady } from '../src/tasks.js';
@@ -57,7 +57,7 @@ function checkEnv() {
     add('core env', missing.length === 0 ? 'ok' : 'fail', missing.length === 0 ? 'required keys set' : `missing ${missing.join(', ')}`);
     add('security env', envSet('PIN_HASH') && envSet('PIN_SALT') && envSet('KILL_PHRASE') ? 'ok' : 'warn', 'PIN/KILL configured check');
     add('dashboard env', envSet('DASHBOARD_TOKEN') ? 'ok' : 'warn', envSet('DASHBOARD_TOKEN') ? 'token set' : 'token missing');
-    add('config dir', existsSync(CLAUDECLAW_CONFIG) ? 'ok' : 'warn', CLAUDECLAW_CONFIG);
+    add('config dir', existsSync(HOWL_CONFIG_DIR) ? 'ok' : 'warn', HOWL_CONFIG_DIR);
 }
 function checkDb() {
     initDatabase();

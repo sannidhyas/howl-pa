@@ -73,7 +73,7 @@ function isSystemdServiceActive() {
     return active.status === 0;
 }
 function isLivePidFromFile(configDir) {
-    const pidFile = join(configDir, 'store', 'claudeclaw.pid');
+    const pidFile = join(configDir, 'store', 'howl-pa.pid');
     if (!existsSync(pidFile))
         return false;
     let pidText;

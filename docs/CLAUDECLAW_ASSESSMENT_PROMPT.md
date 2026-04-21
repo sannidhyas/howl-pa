@@ -1,3 +1,5 @@
+> (archival — project renamed to howl-pa)
+
 # ClaudeClaw Assessment Prompt
 
 Paste this into a Claude Code session inside your existing ClaudeClaw directory. It will audit your current setup, identify gaps, and recommend which Power Packs to install.

@@ -95,7 +95,7 @@ function isSystemdServiceActive(): boolean {
 }
 
 function isLivePidFromFile(configDir: string): boolean {
-  const pidFile = join(configDir, 'store', 'claudeclaw.pid')
+  const pidFile = join(configDir, 'store', 'howl-pa.pid')
   if (!existsSync(pidFile)) return false
 
   let pidText: string

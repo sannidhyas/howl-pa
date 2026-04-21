@@ -56,7 +56,7 @@ Then wire up Google:
 howl-pa setup:google
 ```
 
-This opens a browser window, walks through consent for Gmail readonly + Calendar + Tasks, and writes the token to `$XDG_CONFIG_HOME/howl-pa/google-token.json` (or `~/.claudeclaw/google-token.json` on legacy machines).
+This opens a browser window, walks through consent for Gmail readonly + Calendar + Tasks, and writes the token to `$XDG_CONFIG_HOME/howl-pa/google-token.json` (or `~/.config/howl-pa/google-token.json` on legacy machines — auto-migrated from `~/.claudeclaw` on first boot).
 
 Finally, launch:
 
@@ -70,9 +70,9 @@ DM your bot on Telegram. You should see a PIN prompt. Unlock with your PIN; try 
 
 Resolution order for the runtime dir:
 
-1. `HOWL_CONFIG` or `CLAUDECLAW_CONFIG` if exported
+1. `HOWL_CONFIG` if exported (`CLAUDECLAW_CONFIG` accepted as deprecated alias)
 2. `$XDG_CONFIG_HOME/howl-pa` (preferred on Linux)
-3. `~/.claudeclaw` if it exists (backwards-compat)
+3. `~/.claudeclaw` if it exists (legacy — auto-migrated to `~/.config/howl-pa` on first boot)
 4. `~/.config/howl-pa` (fallback)
 
 The bot's SQLite DB lives at `store/howl.db` relative to wherever you installed the package or cloned the repo — the dashboard + classifier + memory all read it from there.
@@ -131,7 +131,7 @@ Database migrations run automatically on first start after upgrade — each `ALT
 
 ```sh
 npm uninstall -g howl-pa
-rm -rf $XDG_CONFIG_HOME/howl-pa         # or ~/.claudeclaw
+rm -rf $XDG_CONFIG_HOME/howl-pa         # or ~/.config/howl-pa
 ```
 
 The bot never writes inside the vault when it isn't running, so once the process is stopped, no further changes happen.

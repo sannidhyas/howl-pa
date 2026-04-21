@@ -3,7 +3,7 @@ import { logger } from '../logger.js'
 import { ClaudeBackend } from './claude.js'
 import { CodexBackend } from './codex.js'
 import { OllamaBackend } from './ollama.js'
-import type { AggregatorKind, RunMode, SubagentBackend, SubagentInput, SubagentResult } from './types.js'
+import type { AggregatorKind, CouncilOptions, RunMode, SubagentBackend, SubagentInput, SubagentResult } from './types.js'
 import { runCouncil } from './aggregator.js'
 
 const DESIGN_HINTS = new Set(['ui', 'ux', 'design', 'visual', 'layout', 'css', 'mockup'])
@@ -95,6 +95,7 @@ export type DispatchOptions = {
   aggregator?: AggregatorKind
   judge?: string
   forcedBackend?: string
+  onProgress?: CouncilOptions['onProgress']
 }
 
 export type DispatchOutcome = {
@@ -251,7 +252,7 @@ export async function dispatchSubagent(
 
   logger.info({ aggregator, role, members: members.map(m => m.name), judge: judge.name }, 'council dispatch')
 
-  const outcome = await runCouncil({ input: runInput, members, aggregator, judge })
+  const outcome = await runCouncil({ input: runInput, members, aggregator, judge }, { onProgress: opts.onProgress })
 
   const backendsUsed = members.map(m => m.name)
   const fullOk = outcome.members.every(r => !r.error)

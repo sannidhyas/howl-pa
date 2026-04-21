@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from '
 import { dirname } from 'node:path';
 import { ALLOWED_CHAT_ID, LOCK_PATH, PROJECT_ROOT, SECURITY_ENABLED, STORE_DIR, } from './config.js';
 import { logger } from './logger.js';
+import { migrateLegacyConfigDir } from './env.js';
 import { createBot } from './bot.js';
 import { closeDatabase, initDatabase } from './db.js';
 import { registerKillHandler } from './security.js';
@@ -39,6 +40,7 @@ function releaseLock() {
     }
 }
 async function main() {
+    migrateLegacyConfigDir();
     // Always print the banner — it's the one-shot visual signal the daemon
     // is up. Terminals without ANSI colour see ASCII silhouette, coloured
     // terminals get the tinted version.

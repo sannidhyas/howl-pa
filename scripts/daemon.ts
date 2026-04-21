@@ -45,6 +45,24 @@ function resolveHowlPaPath(): string {
   process.exit(1)
 }
 
+function resolveCodexBin(): string | null {
+  const whichResult: SpawnSyncReturns<string> = spawnSync('which', ['codex'], {
+    encoding: 'utf8',
+  })
+  const whichPath: string | null = pathFrom(whichResult)
+  if (whichPath) return whichPath
+
+  const commandResult: SpawnSyncReturns<string> = spawnSync('command -v codex', {
+    encoding: 'utf8',
+    shell: true,
+  })
+  const commandPath: string | null = pathFrom(commandResult)
+  if (commandPath) return commandPath
+
+  console.warn('codex binary not found on PATH at install time; /ask codex and /council will fall back to claude+ollama until you install codex and re-run `howl-pa daemon install --force`')
+  return null
+}
+
 function exitWith(result: SpawnSyncReturns<Buffer>): never {
   process.exit(result.status ?? 1)
 }
@@ -54,7 +72,19 @@ function runRequired(command: string, args: string[]): void {
   if (result.status !== 0) exitWith(result)
 }
 
-function unitContent(nodePath: string, howlPaPath: string, configDir: string): string {
+function unitContent(
+  nodePath: string,
+  howlPaPath: string,
+  configDir: string,
+  codexBin: string | null,
+): string {
+  const nodeDir: string = dirname(nodePath)
+  const brewBin: string = '/home/linuxbrew/.linuxbrew/bin'
+  const localBin: string = join(homedir(), '.local', 'bin')
+  const path: string = [nodeDir, brewBin, localBin, '/usr/local/bin', '/usr/bin']
+    .filter(p => p && existsSync(p))
+    .join(':')
+
   return `[Unit]
 Description=Howl PA — Telegram-first Mission Control
 After=network-online.target
@@ -62,9 +92,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+Environment=PATH=${path}
 ExecStart=${nodePath} ${howlPaPath} start
-Environment=NODE_ENV=production
-Environment=CLAUDECLAW_CONFIG=${configDir}
+${codexBin ? `Environment=CODEX_BIN=${codexBin}\n` : ''}Environment=NODE_ENV=production
+Environment=HOWL_CONFIG=${configDir}
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -84,9 +115,10 @@ function install(args: string[]): void {
 
   const nodePath: string = process.execPath
   const howlPaPath: string = resolveHowlPaPath()
+  const codexBin: string | null = resolveCodexBin()
   const configDir: string = resolveConfigDir()
   mkdirSync(dirname(UNIT_FILE), { recursive: true })
-  writeFileSync(UNIT_FILE, unitContent(nodePath, howlPaPath, configDir), {
+  writeFileSync(UNIT_FILE, unitContent(nodePath, howlPaPath, configDir, codexBin), {
     encoding: 'utf8',
     mode: 0o644,
   })

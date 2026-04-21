@@ -92,7 +92,7 @@
 - **Self-hosted Ollama GPU on Bluefin** — podman quadlet container recipe documented end-to-end
 - **npm publish automation** — `prepublishOnly` already gates on typecheck + build; need a GitHub Action to tag + publish
 - **CI** — GitHub Actions: typecheck, build, `npm pack` smoke test on each PR
-- **Config migration CLI** — `howl-pa migrate` that moves `~/.claudeclaw/` → `$XDG_CONFIG_HOME/howl-pa/` cleanly
+- **Config migration** — auto-migrates `~/.claudeclaw/` → `~/.config/howl-pa/` on first boot (manual `howl-pa migrate` CLI planned)
 - **`howl-pa doctor`** — a richer health check that explains remediation for each failing probe
 
 ### Mid-term (v0.2)

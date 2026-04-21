@@ -1,6 +1,7 @@
-import { readFileSync, existsSync } from 'node:fs'
+import { cpSync, existsSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { logger } from './logger.js'
 
 // Single source of truth for the runtime config directory. Resolution:
 //   1. explicit override arg
@@ -17,6 +18,37 @@ export function resolveConfigDir(override?: string): string {
   const legacy = join(homedir(), '.claudeclaw')
   if (existsSync(legacy)) return legacy
   return join(homedir(), '.config', 'howl-pa')
+}
+
+export function migrateLegacyConfigDir(): void {
+  try {
+    if (process.env.HOWL_CONFIG || process.env.CLAUDECLAW_CONFIG) return
+
+    const legacy = join(homedir(), '.claudeclaw')
+    const newPath = join(homedir(), '.config', 'howl-pa')
+    const legacyExists = existsSync(legacy)
+    const newPathExists = existsSync(newPath)
+
+    if (legacyExists && newPathExists) {
+      logger.warn('legacy ~/.claudeclaw still present; active config is ~/.config/howl-pa')
+      return
+    }
+
+    if (!legacyExists || newPathExists) return
+
+    try {
+      renameSync(legacy, newPath)
+      logger.info({ from: legacy, to: newPath }, 'migrated legacy config dir')
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code !== 'EXDEV') throw err
+      cpSync(legacy, newPath, { recursive: true })
+      rmSync(legacy, { recursive: true, force: true })
+      logger.info({ from: legacy, to: newPath }, 'migrated legacy config dir')
+    }
+  } catch (err) {
+    logger.warn({ err }, 'failed to migrate legacy config dir')
+  }
 }
 
 const LINE_RE = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/

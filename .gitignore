@@ -21,5 +21,10 @@ google-token.json
 howl.db
 howl.db-*
 claudeclaw.pid
+howl-pa.pid
 config/howl-pa/
 .config/howl-pa/
+
+# codex-corps runtime artifacts
+.claude/.codex-locks/
+.claude/codex-lessons.md

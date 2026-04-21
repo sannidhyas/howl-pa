@@ -45,3 +45,11 @@ export interface SubagentBackend {
 export type RunMode = 'single' | 'council'
 
 export type AggregatorKind = 'best-of-n' | 'merge' | 'vote'
+
+export type CouncilProgressEvent =
+  | { kind: 'member_done'; backend: string; durationMs: number }
+  | { kind: 'member_still_running'; backend: string; durationMs: number }
+
+export type CouncilOptions = {
+  onProgress?: (event: CouncilProgressEvent) => void
+}

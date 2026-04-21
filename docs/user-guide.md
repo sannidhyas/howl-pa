@@ -500,9 +500,9 @@ Config directory resolution order (first match wins):
 | Priority | Source |
 |---:|---|
 | 1 | `HOWL_CONFIG` env var |
-| 2 | `CLAUDECLAW_CONFIG` env var |
+| 2 | `CLAUDECLAW_CONFIG` env var (deprecated alias) |
 | 3 | `$XDG_CONFIG_HOME/howl-pa` |
-| 4 | `~/.claudeclaw` (legacy, only if already present) |
+| 4 | `~/.claudeclaw` (legacy — auto-migrated to `~/.config/howl-pa` on first boot) |
 | 5 | `~/.config/howl-pa` (fallback) |
 
 Resolved paths:

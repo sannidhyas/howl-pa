@@ -201,7 +201,7 @@ async function main(): Promise<void> {
     throw err
   }
   await exchangeCode(code)
-  console.log('\n✅ ~/.claudeclaw/google-token.json saved.')
+  console.log('\n✅ ~/.config/howl-pa/google-token.json saved.')
 }
 
 main().catch(err => {

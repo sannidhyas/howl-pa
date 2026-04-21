@@ -1,6 +1,6 @@
 import { logger } from '../logger.js';
 const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://localhost:11434';
-const DEFAULT_TIMEOUT_MS = 180_000;
+const DEFAULT_TIMEOUT_MS = 900_000;
 export class OllamaBackend {
     name;
     model;
@@ -11,7 +11,7 @@ export class OllamaBackend {
     async run(input) {
         const start = Date.now();
         const result = { backend: this.name, text: '', durationMs: 0 };
-        const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+        const timeoutMs = (input.timeoutMs ?? Number.parseInt(process.env.OLLAMA_TIMEOUT_MS ?? '', 10)) || DEFAULT_TIMEOUT_MS;
         const ac = new AbortController();
         const timer = setTimeout(() => ac.abort(), timeoutMs);
         timer.unref();

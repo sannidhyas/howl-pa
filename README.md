@@ -29,6 +29,8 @@ howl-pa start
 
 ## Status
 
+v1.1.0-rc.3: project renamed from ClaudeClaw to howl-pa; legacy `~/.claudeclaw` auto-migrates on first boot.
+
 v1.0.0. Runs daily against a real workload. Ships as an npm package with a bundled Claude Code slash command + MCP plugin.
 
 ## Security & credentials
@@ -47,7 +49,7 @@ v1.0.0. Runs daily against a real workload. Ships as an npm package with a bundl
 | Dashboard password (optional) | You choose, during `howl-pa setup` or `howl-pa set-password` | `<config-dir>/.env` → `DASHBOARD_PASSWORD_HASH` (SHA-256 of `salt:password`) |
 | Dashboard bearer token | Generated at setup, used by the API + `/howl` Claude Code command | `<config-dir>/.env` → `DASHBOARD_TOKEN` |
 
-`<config-dir>` resolves to `$HOWL_CONFIG`, `$CLAUDECLAW_CONFIG`, `$XDG_CONFIG_HOME/howl-pa`, `~/.claudeclaw` (legacy), or `~/.config/howl-pa`, in that order.
+`<config-dir>` resolves to `$HOWL_CONFIG`, `$CLAUDECLAW_CONFIG` (deprecated alias), `$XDG_CONFIG_HOME/howl-pa`, `~/.claudeclaw` (legacy — auto-migrated on first boot), or `~/.config/howl-pa`, in that order.
 
 ### What is NOT in the repo
 

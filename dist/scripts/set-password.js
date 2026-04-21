@@ -9,10 +9,8 @@ function expand(p) {
     return p;
 }
 function resolveConfigDir() {
-    if (process.env.HOWL_CONFIG)
-        return expand(process.env.HOWL_CONFIG);
-    if (process.env.CLAUDECLAW_CONFIG)
-        return expand(process.env.CLAUDECLAW_CONFIG);
+    if (process.env.HOWL_CONFIG ?? process.env.CLAUDECLAW_CONFIG)
+        return expand((process.env.HOWL_CONFIG ?? process.env.CLAUDECLAW_CONFIG));
     const xdg = process.env.XDG_CONFIG_HOME;
     if (xdg)
         return join(xdg, 'howl-pa');

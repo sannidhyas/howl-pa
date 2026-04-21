@@ -22,7 +22,7 @@ export class CodexBackend {
     name = 'codex';
     async run(input) {
         const start = Date.now();
-        const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+        const timeoutMs = (input.timeoutMs ?? Number.parseInt(process.env.CODEX_TIMEOUT_MS ?? '', 10)) || DEFAULT_TIMEOUT_MS;
         const args = ['exec', '--skip-git-repo-check', '-s', 'read-only', input.prompt];
         const result = { backend: this.name, text: '', durationMs: 0 };
         return await new Promise((resolve) => {

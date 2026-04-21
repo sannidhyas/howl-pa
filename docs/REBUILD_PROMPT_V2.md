@@ -1,3 +1,5 @@
+> (archival — project renamed to howl-pa)
+
 # ClaudeClaw OS - Rebuild Mega Prompt
 
 ## IMPORTANT - READ BEFORE PASTING

@@ -639,11 +639,52 @@ async function handleCommand(ctx: Context, text: string): Promise<boolean> {
         await ctx.reply('usage: /council [merge|best-of-n|vote] <prompt>')
         return true
       }
-      await ctx.reply(`assembling council${aggregator ? ` (${aggregator})` : ''}…`)
+      const aggregatorLabel = aggregator ?? 'best-of-n'
+      const councilMsg = await ctx.reply(`assembling council (${aggregatorLabel})…`)
+      const councilMsgChatId = councilMsg.chat.id
+      const councilMsgId = councilMsg.message_id
+      const councilStatus = new Map<string, string>()
+      const councilStart = Date.now()
+      let lastCouncilEdit = 0
+
+      const renderCouncilStatus = (): string => {
+        const elapsed = Math.round((Date.now() - councilStart) / 1000)
+        const lines = [...councilStatus.entries()].map(([backend, status]) => `• ${backend} — ${status}`)
+        return [`council (${aggregatorLabel}) · elapsed ${elapsed}s`, ...lines].join('\n')
+      }
+
+      const editCouncilStatus = async (force = false): Promise<void> => {
+        const now = Date.now()
+        if (!force && now - lastCouncilEdit < 5000) return
+        lastCouncilEdit = now
+        try {
+          await ctx.api.editMessageText(councilMsgChatId, councilMsgId, renderCouncilStatus())
+        } catch {}
+      }
+
       const outcome = await dispatchSubagent(
         { prompt, chatId, hints: ['reasoning'] },
-        { mode: 'council', aggregator }
+        {
+          mode: 'council',
+          aggregator,
+          onProgress: event => {
+            if (event.kind === 'member_done') {
+              councilStatus.set(event.backend, `done (${(event.durationMs / 1000).toFixed(1)}s)`)
+            } else {
+              councilStatus.set(event.backend, `running… (${Math.round(event.durationMs / 1000)}s)`)
+            }
+            void editCouncilStatus()
+          },
+        }
       )
+      councilStatus.clear()
+      for (const r of outcome.members) {
+        councilStatus.set(
+          r.backend,
+          r.error ? `done ⚠️ ${r.error.slice(0, 80)}` : `done (${(r.durationMs / 1000).toFixed(1)}s)`
+        )
+      }
+      await editCouncilStatus(true)
       const memberLines = outcome.members
         .map(r => `• <code>${escapeHtml(r.backend)}</code> ${r.error ? `⚠️ ${escapeHtml(r.error.slice(0, 80))}` : `ok (${(r.durationMs / 1000).toFixed(1)}s)`}`)
         .join('\n')

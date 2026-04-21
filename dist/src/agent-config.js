@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
-import { PROJECT_ROOT, CLAUDECLAW_CONFIG } from './config.js';
+import { PROJECT_ROOT, HOWL_CONFIG_DIR } from './config.js';
 const DEFAULT_MAIN = {
     id: 'main',
     displayName: 'Howl PA',
@@ -14,7 +14,7 @@ export function resolveAgentDir(agentId) {
     const projectPath = join(PROJECT_ROOT, 'agents', agentId);
     if (existsSync(projectPath))
         return projectPath;
-    const configPath = join(CLAUDECLAW_CONFIG, 'agents', agentId);
+    const configPath = join(HOWL_CONFIG_DIR, 'agents', agentId);
     if (existsSync(configPath))
         return configPath;
     return null;

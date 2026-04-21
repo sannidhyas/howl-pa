@@ -68,12 +68,12 @@ export const IDLE_LOCK_MINUTES = intOpt('IDLE_LOCK_MINUTES', 30)
 export const KILL_PHRASE = optional('KILL_PHRASE')
 
 // Paths — single source of truth lives in src/env.ts (resolveConfigDir).
-export const CLAUDECLAW_CONFIG = resolveConfigDir()
+export const HOWL_CONFIG_DIR = resolveConfigDir()
 export const VAULT_PATH =
   expandPath(optional('VAULT_PATH', '~/Documents/vault')) ?? '~/Documents/vault'
-export const STORE_DIR = join(CLAUDECLAW_CONFIG, 'store')
+export const STORE_DIR = join(HOWL_CONFIG_DIR, 'store')
 export const DB_PATH = join(STORE_DIR, 'howl.db')
-export const LOCK_PATH = join(STORE_DIR, 'claudeclaw.pid')
+export const LOCK_PATH = join(STORE_DIR, 'howl-pa.pid')
 
 export const DASHBOARD_HOST = optional('DASHBOARD_HOST', '127.0.0.1')
 export const DASHBOARD_USERNAME = optional('DASHBOARD_USERNAME', 'howl')

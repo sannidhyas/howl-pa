@@ -27,7 +27,7 @@
     "code_review_depth": "standard",
     "pattern_mapper": true,
     "plan_bounce": true,
-    "plan_bounce_script": "/var/home/wolfsandheer/ClaudeClaw/scripts/ollama-council-bounce.sh",
+    "plan_bounce_script": "/var/home/wolfsandheer/projects/howl-pa/scripts/ollama-council-bounce.sh",
     "plan_bounce_passes": 1,
     "auto_prune_state": false
   },

@@ -194,7 +194,7 @@ export async function dispatchSubagent(input, opts = {}) {
     const judge = resolveJudge(opts);
     const aggregator = defaultAggregator(input, opts);
     logger.info({ aggregator, role, members: members.map(m => m.name), judge: judge.name }, 'council dispatch');
-    const outcome = await runCouncil({ input: runInput, members, aggregator, judge });
+    const outcome = await runCouncil({ input: runInput, members, aggregator, judge }, { onProgress: opts.onProgress });
     const backendsUsed = members.map(m => m.name);
     const fullOk = outcome.members.every(r => !r.error);
     recordSubagentRun({

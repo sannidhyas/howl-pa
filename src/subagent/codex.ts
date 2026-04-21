@@ -27,7 +27,7 @@ export class CodexBackend implements SubagentBackend {
 
   async run(input: SubagentInput): Promise<SubagentResult> {
     const start = Date.now()
-    const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    const timeoutMs = (input.timeoutMs ?? Number.parseInt(process.env.CODEX_TIMEOUT_MS ?? '', 10)) || DEFAULT_TIMEOUT_MS
     const args = ['exec', '--skip-git-repo-check', '-s', 'read-only', input.prompt]
     const result: SubagentResult = { backend: this.name, text: '', durationMs: 0 }
 

@@ -39,6 +39,23 @@ function resolveHowlPaPath() {
     console.error('Unable to locate howl-pa on PATH. Install it first, then retry.');
     process.exit(1);
 }
+function resolveCodexBin() {
+    const whichResult = spawnSync('which', ['codex'], {
+        encoding: 'utf8',
+    });
+    const whichPath = pathFrom(whichResult);
+    if (whichPath)
+        return whichPath;
+    const commandResult = spawnSync('command -v codex', {
+        encoding: 'utf8',
+        shell: true,
+    });
+    const commandPath = pathFrom(commandResult);
+    if (commandPath)
+        return commandPath;
+    console.warn('codex binary not found on PATH at install time; /ask codex and /council will fall back to claude+ollama until you install codex and re-run `howl-pa daemon install --force`');
+    return null;
+}
 function exitWith(result) {
     process.exit(result.status ?? 1);
 }
@@ -47,7 +64,13 @@ function runRequired(command, args) {
     if (result.status !== 0)
         exitWith(result);
 }
-function unitContent(nodePath, howlPaPath, configDir) {
+function unitContent(nodePath, howlPaPath, configDir, codexBin) {
+    const nodeDir = dirname(nodePath);
+    const brewBin = '/home/linuxbrew/.linuxbrew/bin';
+    const localBin = join(homedir(), '.local', 'bin');
+    const path = [nodeDir, brewBin, localBin, '/usr/local/bin', '/usr/bin']
+        .filter(p => p && existsSync(p))
+        .join(':');
     return `[Unit]
 Description=Howl PA — Telegram-first Mission Control
 After=network-online.target
@@ -55,9 +78,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+Environment=PATH=${path}
 ExecStart=${nodePath} ${howlPaPath} start
-Environment=NODE_ENV=production
-Environment=CLAUDECLAW_CONFIG=${configDir}
+${codexBin ? `Environment=CODEX_BIN=${codexBin}\n` : ''}Environment=NODE_ENV=production
+Environment=HOWL_CONFIG=${configDir}
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -75,9 +99,10 @@ function install(args) {
     }
     const nodePath = process.execPath;
     const howlPaPath = resolveHowlPaPath();
+    const codexBin = resolveCodexBin();
     const configDir = resolveConfigDir();
     mkdirSync(dirname(UNIT_FILE), { recursive: true });
-    writeFileSync(UNIT_FILE, unitContent(nodePath, howlPaPath, configDir), {
+    writeFileSync(UNIT_FILE, unitContent(nodePath, howlPaPath, configDir, codexBin), {
         encoding: 'utf8',
         mode: 0o644,
     });

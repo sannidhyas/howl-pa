@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync, readdirSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { PROJECT_ROOT, CLAUDECLAW_CONFIG } from './config.js'
+import { PROJECT_ROOT, HOWL_CONFIG_DIR } from './config.js'
 import { logger } from './logger.js'
 
 const TEMPLATE_DIR = join(PROJECT_ROOT, 'agents', '_template')
@@ -18,7 +18,7 @@ export function listAgents(): Array<{ id: string; location: string; dir: string;
   const out: Array<{ id: string; location: string; dir: string; description?: string }> = []
   const roots: Array<{ loc: string; base: string }> = [
     { loc: 'project', base: join(PROJECT_ROOT, 'agents') },
-    { loc: 'config', base: join(CLAUDECLAW_CONFIG, 'agents') },
+    { loc: 'config', base: join(HOWL_CONFIG_DIR, 'agents') },
   ]
   for (const { loc, base } of roots) {
     if (!existsSync(base)) continue
@@ -40,7 +40,7 @@ export function createAgent(args: CreateAgentArgs): { dir: string } {
     throw new Error(`agent id must match ${ID_RE}: got "${args.id}"`)
   }
   const location = args.location ?? 'project'
-  const base = location === 'project' ? join(PROJECT_ROOT, 'agents') : join(CLAUDECLAW_CONFIG, 'agents')
+  const base = location === 'project' ? join(PROJECT_ROOT, 'agents') : join(HOWL_CONFIG_DIR, 'agents')
   const dir = join(base, args.id)
   if (existsSync(dir)) throw new Error(`agent already exists: ${dir}`)
   mkdirSync(dir, { recursive: true })

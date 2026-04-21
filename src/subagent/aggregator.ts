@@ -1,7 +1,7 @@
-import type { AggregatorKind, SubagentBackend, SubagentInput, SubagentResult } from './types.js'
+import type { AggregatorKind, CouncilOptions, SubagentBackend, SubagentInput, SubagentResult } from './types.js'
 import { logger } from '../logger.js'
 
-const JUDGE_TIMEOUT_MS = 180_000
+const JUDGE_TIMEOUT_MS = Number.parseInt(process.env.COUNCIL_JUDGE_TIMEOUT_MS ?? '', 10) || 180_000
 
 export type AggregationOutcome = {
   final: string
@@ -18,14 +18,43 @@ export async function runCouncil(args: {
   members: SubagentBackend[]
   aggregator: AggregatorKind
   judge: SubagentBackend
-}): Promise<AggregationOutcome> {
+}, opts: CouncilOptions = {}): Promise<AggregationOutcome> {
   const { input, members, aggregator, judge } = args
-  const results = await Promise.all(members.map(m => m.run(input).catch<SubagentResult>((err) => ({
-    backend: m.name,
-    text: '',
-    durationMs: 0,
-    error: err instanceof Error ? err.message : String(err),
-  }))))
+  const councilStart = Date.now()
+  const pending = new Set<string>(members.map(m => m.name))
+  const memberStarts = new Map<string, number>(members.map(m => [m.name, Date.now()]))
+
+  const memberPromises = members.map(m => {
+    const mStart = Date.now()
+    return m.run(input).then(
+      (r): SubagentResult => {
+        pending.delete(m.name)
+        opts.onProgress?.({ kind: 'member_done', backend: m.name, durationMs: Date.now() - mStart })
+        return r
+      },
+      (err): SubagentResult => {
+        pending.delete(m.name)
+        const durationMs = Date.now() - mStart
+        opts.onProgress?.({ kind: 'member_done', backend: m.name, durationMs })
+        return { backend: m.name, text: '', durationMs, error: err instanceof Error ? err.message : String(err) }
+      }
+    )
+  })
+
+  const heartbeat = setInterval(() => {
+    if (pending.size === 0) {
+      clearInterval(heartbeat)
+      return
+    }
+    for (const name of pending) {
+      const mStart = memberStarts.get(name) ?? councilStart
+      opts.onProgress?.({ kind: 'member_still_running', backend: name, durationMs: Date.now() - mStart })
+    }
+  }, 30_000)
+  heartbeat.unref()
+
+  const results = await Promise.all(memberPromises)
+  clearInterval(heartbeat)
 
   const ok = surviving(results)
   if (ok.length === 0) {

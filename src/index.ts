@@ -9,6 +9,7 @@ import {
   STORE_DIR,
 } from './config.js'
 import { logger } from './logger.js'
+import { migrateLegacyConfigDir } from './env.js'
 import { createBot } from './bot.js'
 import { closeDatabase, initDatabase } from './db.js'
 import { registerKillHandler } from './security.js'
@@ -47,6 +48,7 @@ function releaseLock(): void {
 }
 
 async function main(): Promise<void> {
+  migrateLegacyConfigDir()
   // Always print the banner — it's the one-shot visual signal the daemon
   // is up. Terminals without ANSI colour see ASCII silhouette, coloured
   // terminals get the tinted version.
