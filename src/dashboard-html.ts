@@ -1,6 +1,4 @@
 export function dashboardHtml(token: string): string {
-  // The dashboard is a single static HTML blob with vanilla JS. Token is injected
-  // so xhr/SSE can re-authenticate with ?token=… without the user re-typing it.
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -8,294 +6,1524 @@ export function dashboardHtml(token: string): string {
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Howl PA</title>
   <style>
-    :root { --bg:#0e0f13; --panel:#15171c; --panel2:#1b1e25; --muted:#8a8f9a; --fg:#eef1f5; --accent:#7cc5ff; --accent2:#b389ff; --danger:#ff9a8a; --ok:#8ad48a; }
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
-    header{display:flex;justify-content:space-between;align-items:center;padding:14px 22px;border-bottom:1px solid #21252c;background:var(--panel);position:sticky;top:0;z-index:10;}
-    header h1{margin:0;font-size:15px;letter-spacing:.04em;text-transform:uppercase;}
-    header .meta{color:var(--muted);font-size:12px}
-    nav{display:flex;gap:2px;padding:0 22px;background:var(--panel);border-bottom:1px solid #21252c;overflow-x:auto}
-    nav button{background:none;border:none;color:var(--muted);padding:10px 14px;font-family:inherit;font-size:13px;cursor:pointer;border-bottom:2px solid transparent}
-    nav button:hover{color:var(--fg)}
-    nav button.active{color:var(--accent);border-bottom-color:var(--accent)}
-    main{padding:22px;max-width:1400px;margin:0 auto}
-    section{display:none}
-    section.active{display:block}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:16px}
-    .card{background:var(--panel);border:1px solid #21252c;border-radius:8px;padding:14px}
-    .card h3{margin:0 0 6px 0;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
-    .card .n{font-size:26px;font-weight:600}
-    table{width:100%;border-collapse:collapse;font-size:12.5px;background:var(--panel);border-radius:8px;overflow:hidden}
-    th{text-align:left;padding:8px 10px;color:var(--muted);background:var(--panel2);font-weight:500;text-transform:uppercase;letter-spacing:.06em;font-size:11px}
-    td{padding:8px 10px;border-top:1px solid #21252c;vertical-align:top}
-    td.mono{font-family:inherit;font-size:12px;color:var(--muted)}
-    td.ok{color:var(--ok)} td.bad{color:var(--danger)}
-    code{background:#1b1e25;padding:1px 6px;border-radius:3px;font-size:12px}
-    .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;background:#2a2f38;color:var(--muted)}
-    .pill.active{background:var(--ok);color:#0e0f13}
-    .pill.paused{background:#444;color:#ccc}
-    .pill.stuck{background:var(--danger);color:#0e0f13}
-    .pill.running{background:var(--accent);color:#0e0f13}
-    .pill.done{background:var(--ok);color:#0e0f13}
-    .pill.failed{background:var(--danger);color:#0e0f13}
-    .pill.error{background:var(--danger);color:#0e0f13}
-    .pill.partial{background:#d4b35a;color:#0e0f13}
-    .pill.ok{background:var(--ok);color:#0e0f13}
-    .feed{background:var(--panel);border:1px solid #21252c;border-radius:8px;padding:10px;max-height:260px;overflow-y:auto;font-size:12.5px}
-    .feed div{padding:4px 0;border-bottom:1px dashed #21252c}
-    .feed .name{color:var(--accent);font-weight:600}
-    .muted{color:var(--muted)}
-    .truncate{max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .hint{color:var(--muted);font-size:12px;margin-bottom:10px}
-    .right{text-align:right}
+    :root {
+      --bg: #0b0c10;
+      --bg-1: #13151b;
+      --bg-2: #191c24;
+      --bg-3: #21252f;
+      --border: #272b36;
+      --border-strong: #3a3f4d;
+      --fg: #edf0f6;
+      --fg-muted: #a1a7b5;
+      --fg-dim: #6c7384;
+      --accent: #7cc5ff;
+      --accent-dim: #4b8cc9;
+      --violet: #b389ff;
+      --ok: #6fd19a;
+      --warn: #e9b56b;
+      --danger: #f08a7a;
+      --info: #7cc5ff;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
+      --shadow-md: 0 4px 14px rgba(0,0,0,.35);
+      --radius: 10px;
+      --radius-sm: 6px;
+      --ease: cubic-bezier(.2,.6,.2,1);
+      --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font: 14px/1.5 var(--sans);
+      -webkit-font-smoothing: antialiased;
+    }
+    code, .mono, pre, .num { font-family: var(--mono); }
+
+    /* Layout */
+    .app { display: flex; flex-direction: column; min-height: 100vh; }
+    header.top {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 20px;
+      background: var(--bg-1);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 30;
+    }
+    header.top h1 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    header.top h1::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--ok);
+      box-shadow: 0 0 0 4px rgba(111,209,154,.15);
+      animation: pulse 2s infinite;
+    }
+    body.offline header.top h1::before { background: var(--danger); box-shadow: 0 0 0 4px rgba(240,138,122,.2); }
+    body.degraded header.top h1::before { background: var(--warn); box-shadow: 0 0 0 4px rgba(233,181,107,.2); }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .55; }
+    }
+    .heartbeat {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--fg-dim);
+    }
+    .spacer { flex: 1; }
+    .search {
+      position: relative;
+      width: 260px;
+    }
+    .search input {
+      width: 100%;
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 10px 6px 28px;
+      color: var(--fg);
+      font: inherit;
+      transition: border-color .15s var(--ease), background .15s var(--ease);
+    }
+    .search input:focus {
+      outline: none;
+      border-color: var(--accent-dim);
+      background: var(--bg-1);
+    }
+    .search::before {
+      content: '⌕';
+      position: absolute;
+      left: 9px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--fg-dim);
+      font-size: 14px;
+    }
+    .search kbd {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--bg-3);
+      color: var(--fg-dim);
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-family: var(--mono);
+    }
+
+    /* Pulse strip */
+    .pulse {
+      display: flex;
+      gap: 0;
+      padding: 0;
+      background: var(--bg-1);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .pulse::-webkit-scrollbar { display: none; }
+    .pulse-cell {
+      display: flex;
+      flex-direction: column;
+      padding: 10px 18px;
+      border-right: 1px solid var(--border);
+      min-width: 140px;
+      white-space: nowrap;
+    }
+    .pulse-cell:last-child { border-right: none; }
+    .pulse-cell .label {
+      font-size: 10.5px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: .09em;
+      color: var(--fg-dim);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pulse-cell .label::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: .5;
+    }
+    .pulse-cell .value {
+      font-family: var(--mono);
+      font-size: 18px;
+      font-weight: 500;
+      margin-top: 2px;
+      letter-spacing: -.01em;
+    }
+    .pulse-cell .sub {
+      font-size: 11px;
+      color: var(--fg-dim);
+      margin-top: 1px;
+    }
+    .pulse-cell.ok .label { color: var(--ok); }
+    .pulse-cell.warn .label { color: var(--warn); }
+    .pulse-cell.danger .label { color: var(--danger); }
+    .pulse-cell.info .label { color: var(--info); }
+
+    /* Nav */
+    nav.tabs {
+      display: flex;
+      gap: 0;
+      padding: 0 20px;
+      background: var(--bg-1);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 49px;
+      z-index: 20;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    nav.tabs::-webkit-scrollbar { display: none; }
+    nav.tabs button {
+      background: none;
+      border: none;
+      color: var(--fg-muted);
+      padding: 10px 14px;
+      font: inherit;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      position: relative;
+      transition: color .15s var(--ease);
+      white-space: nowrap;
+    }
+    nav.tabs button:hover { color: var(--fg); }
+    nav.tabs button.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+    nav.tabs button .count {
+      display: inline-block;
+      background: var(--bg-3);
+      color: var(--fg-muted);
+      font-size: 10px;
+      padding: 0 6px;
+      border-radius: 999px;
+      margin-left: 6px;
+      font-family: var(--mono);
+      min-width: 18px;
+      text-align: center;
+    }
+    nav.tabs button.active .count { background: var(--accent-dim); color: var(--fg); }
+
+    /* Main */
+    main {
+      flex: 1;
+      padding: 20px;
+      max-width: 1440px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    section.panel { display: none; animation: fadeIn .18s var(--ease); }
+    section.panel.active { display: block; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(2px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    h2.section-title {
+      margin: 0 0 14px 0;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--fg-muted);
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    /* Toolbar (filters, action row above table/grid) */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .toolbar .grow { flex: 1; }
+    .filter-group {
+      display: inline-flex;
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px;
+    }
+    .filter-group button {
+      background: none;
+      border: none;
+      color: var(--fg-muted);
+      padding: 4px 10px;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: background .12s var(--ease), color .12s var(--ease);
+    }
+    .filter-group button:hover { color: var(--fg); }
+    .filter-group button.on {
+      background: var(--bg-3);
+      color: var(--fg);
+    }
+
+    /* Cards */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      transition: border-color .15s var(--ease), transform .15s var(--ease);
+      position: relative;
+    }
+    .card:hover {
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
+    }
+    .card.selected { border-color: var(--accent); }
+    .card .title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .card .title {
+      font-family: var(--mono);
+      font-weight: 500;
+      font-size: 13.5px;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .card .sub {
+      color: var(--fg-muted);
+      font-size: 11.5px;
+      line-height: 1.45;
+      margin-bottom: 8px;
+    }
+    .card .meta-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 12px;
+      color: var(--fg-muted);
+    }
+    .card .meta-row .k {
+      color: var(--fg-dim);
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: .06em;
+      margin-right: 4px;
+    }
+    .card .result {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: var(--fg-muted);
+      max-height: 60px;
+      overflow: hidden;
+      position: relative;
+      margin-bottom: 10px;
+      white-space: pre-wrap;
+    }
+    .card .result.expanded { max-height: none; }
+    .card .result.ok { border-left: 2px solid var(--ok); }
+    .card .result.err { border-left: 2px solid var(--danger); }
+
+    .card-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    button.btn {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      color: var(--fg);
+      padding: 5px 10px;
+      border-radius: 5px;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: background .12s var(--ease), border-color .12s var(--ease);
+    }
+    button.btn:hover { background: var(--bg-3); border-color: var(--border-strong); }
+    button.btn:active { transform: translateY(1px); }
+    button.btn:disabled { opacity: .4; cursor: not-allowed; }
+    button.btn.primary {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: #0b0c10;
+      font-weight: 500;
+    }
+    button.btn.primary:hover { background: var(--accent); }
+    button.btn.ghost {
+      background: transparent;
+      border-color: transparent;
+      color: var(--fg-muted);
+    }
+    button.btn.ghost:hover { background: var(--bg-2); color: var(--fg); }
+    button.btn.danger {
+      background: transparent;
+      border-color: var(--border-strong);
+      color: var(--danger);
+    }
+    button.btn.danger:hover {
+      background: rgba(240,138,122,.12);
+      border-color: var(--danger);
+    }
+    button.btn .spinner {
+      width: 10px;
+      height: 10px;
+      border: 1.5px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Pills */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      font-weight: 500;
+      background: var(--bg-3);
+      color: var(--fg-muted);
+      white-space: nowrap;
+    }
+    .pill.active, .pill.ok, .pill.done {
+      background: rgba(111,209,154,.14);
+      color: var(--ok);
+    }
+    .pill.paused, .pill.disabled { background: rgba(161,167,181,.14); color: var(--fg-muted); }
+    .pill.running, .pill.queued {
+      background: rgba(124,197,255,.14);
+      color: var(--accent);
+    }
+    .pill.failed, .pill.error, .pill.stuck {
+      background: rgba(240,138,122,.14);
+      color: var(--danger);
+    }
+    .pill.partial, .pill.warn { background: rgba(233,181,107,.14); color: var(--warn); }
+    .pill.builtin { background: rgba(179,137,255,.14); color: var(--violet); }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    thead th {
+      text-align: left;
+      padding: 9px 12px;
+      color: var(--fg-dim);
+      background: var(--bg-2);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      font-size: 10.5px;
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr { transition: background .1s var(--ease); }
+    tbody tr:hover { background: var(--bg-2); }
+    tbody td {
+      padding: 8px 12px;
+      border-top: 1px solid var(--border);
+      vertical-align: top;
+    }
+    td.mono { font-family: var(--mono); font-size: 12px; }
+    td.right { text-align: right; }
+    td.muted { color: var(--fg-muted); }
+    .truncate {
+      max-width: 420px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Kanban (missions) */
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    @media (max-width: 900px) {
+      .board { grid-template-columns: 1fr; }
+    }
+    .column {
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      min-height: 220px;
+    }
+    .column h3 {
+      margin: 0 0 10px 0;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--fg-muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .column h3 .count {
+      background: var(--bg-3);
+      color: var(--fg-muted);
+      font-family: var(--mono);
+      font-size: 10.5px;
+      padding: 1px 7px;
+      border-radius: 999px;
+    }
+    .mission {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 8px;
+      font-size: 12.5px;
+      transition: border-color .12s var(--ease);
+    }
+    .mission:hover { border-color: var(--border-strong); }
+    .mission .title { font-weight: 500; margin-bottom: 3px; }
+    .mission .meta {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      color: var(--fg-dim);
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+    .mission .result-preview {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--fg-muted);
+      max-height: 34px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .mission-actions { display: flex; gap: 4px; }
+
+    /* Live feed */
+    .feed {
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+    .feed .entry {
+      display: grid;
+      grid-template-columns: 80px 120px 1fr;
+      gap: 10px;
+      padding: 7px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12.5px;
+      align-items: start;
+      transition: background .1s var(--ease);
+    }
+    .feed .entry:hover { background: var(--bg-2); }
+    .feed .entry .ts {
+      color: var(--fg-dim);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+    .feed .entry .kind {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .feed .entry .kind::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--fg-dim);
+    }
+    .feed .entry.session_start .kind::before { background: var(--violet); }
+    .feed .entry.agent_started .kind::before { background: var(--accent); }
+    .feed .entry.agent_completed .kind::before { background: var(--ok); }
+    .feed .entry.message_received .kind::before { background: var(--fg-muted); }
+    .feed .entry.chat_error .kind::before { background: var(--danger); }
+    .feed .entry.session_end .kind::before { background: var(--fg-dim); }
+    .feed .entry.chat_error { background: rgba(240,138,122,.06); }
+    .feed .entry .payload {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: var(--fg-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Toasts */
+    .toasts {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 100;
+      pointer-events: none;
+    }
+    .toast {
+      background: var(--bg-2);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      padding: 10px 14px;
+      min-width: 260px;
+      max-width: 380px;
+      box-shadow: var(--shadow-md);
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      pointer-events: auto;
+      animation: toastIn .2s var(--ease);
+    }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .toast.ok { border-left: 3px solid var(--ok); }
+    .toast.err { border-left: 3px solid var(--danger); }
+    .toast.info { border-left: 3px solid var(--accent); }
+    .toast .close {
+      background: none;
+      border: none;
+      color: var(--fg-dim);
+      font-size: 16px;
+      cursor: pointer;
+      padding: 0 2px;
+    }
+
+    /* Empty / skeleton */
+    .empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 20px;
+      color: var(--fg-dim);
+      background: var(--bg-1);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+    }
+    .empty .icon { font-size: 28px; margin-bottom: 8px; opacity: .6; }
+    .empty .msg { font-size: 13px; }
+    .empty .hint { font-size: 12px; color: var(--fg-dim); margin-top: 4px; }
+
+    .skeleton {
+      background: linear-gradient(90deg, var(--bg-1), var(--bg-2), var(--bg-1));
+      background-size: 200% 100%;
+      animation: sheen 1.4s linear infinite;
+      border-radius: var(--radius);
+      min-height: 80px;
+    }
+    @keyframes sheen {
+      from { background-position: 200% 0; }
+      to { background-position: -200% 0; }
+    }
+
+    /* Help overlay */
+    .help-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(11,12,16,.65);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 90;
+    }
+    .help-overlay.open { display: flex; animation: fadeIn .15s var(--ease); }
+    .help-card {
+      background: var(--bg-1);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      max-width: 440px;
+      width: 90%;
+      box-shadow: var(--shadow-md);
+    }
+    .help-card h2 { margin: 0 0 14px 0; font-size: 14px; color: var(--fg-muted); letter-spacing: .05em; text-transform: uppercase; }
+    .help-card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; }
+    .help-card dt { font-family: var(--mono); color: var(--accent); }
+    .help-card dd { margin: 0; color: var(--fg-muted); }
+
+    /* Inline confirmation */
+    .confirm {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      background: rgba(240,138,122,.1);
+      border: 1px solid var(--danger);
+      border-radius: 5px;
+      font-size: 12px;
+      color: var(--danger);
+    }
+    .confirm button { font-size: 11.5px; padding: 3px 8px; }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    @media (max-width: 680px) {
+      header.top .search { display: none; }
+      .pulse-cell { min-width: 110px; padding: 8px 12px; }
+      main { padding: 14px; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Howl PA</h1>
-    <div class="meta" id="meta">loading…</div>
-  </header>
-  <nav id="nav">
-    <button data-tab="overview" class="active">Overview</button>
-    <button data-tab="scheduler">Scheduler</button>
-    <button data-tab="missions">Missions</button>
-    <button data-tab="memories">Memories</button>
-    <button data-tab="gmail">Gmail</button>
-    <button data-tab="calendar">Calendar</button>
-    <button data-tab="tasks">Tasks</button>
-    <button data-tab="subagents">Subagents</button>
-    <button data-tab="roles">Routing</button>
-    <button data-tab="audit">Audit</button>
-    <button data-tab="live">Live</button>
-  </nav>
-  <main>
-    <section id="overview" class="active">
-      <div class="grid" id="overview-cards"></div>
-      <h3 class="muted" style="margin-top:20px">Recent token usage</h3>
-      <table id="recent-tokens"></table>
-    </section>
-    <section id="scheduler">
-      <div class="hint">All scheduled tasks. <code>active</code> means next_run is honored.</div>
-      <table id="sched-table"></table>
-    </section>
-    <section id="missions">
-      <div class="hint">Mission queue — ad-hoc + cron-dispatched work.</div>
-      <table id="mission-table"></table>
-    </section>
-    <section id="memories">
-      <div class="hint">Recent chunks indexed into the vector store.</div>
-      <table id="memory-table"></table>
-    </section>
-    <section id="gmail">
-      <div class="hint">Last 50 ingested messages, scored by LLM importance (higher = more urgent).</div>
-      <table id="gmail-table"></table>
-    </section>
-    <section id="calendar">
-      <div class="hint">Events from the last 6 hours through the next 48 (change with ?hours=N on /api/calendar).</div>
-      <table id="calendar-table"></table>
-    </section>
-    <section id="tasks">
-      <div class="hint">Google Tasks — local queue + synced. needs_push rows are waiting for OAuth to land.</div>
-      <table id="tasks-table"></table>
-    </section>
-    <section id="subagents">
-      <div class="hint">Per-run telemetry for Claude / Codex / Ollama dispatches.</div>
-      <table id="subagent-table"></table>
-    </section>
-    <section id="roles">
-      <div class="hint">Routing by inferred role (codex-corps taxonomy). Rolling 7-day window.</div>
-      <table id="role-table"></table>
-    </section>
-    <section id="audit">
-      <div class="hint">All events written to the audit log.</div>
-      <table id="audit-table"></table>
-    </section>
-    <section id="live">
-      <div class="hint">Server-sent events stream. Updates in real time while this tab is open.</div>
-      <div class="feed" id="live-feed"></div>
-    </section>
-  </main>
+  <div class="app">
+    <header class="top">
+      <h1>Howl PA</h1>
+      <div class="heartbeat" id="heartbeat">connecting…</div>
+      <div class="spacer"></div>
+      <div class="search">
+        <input id="search" placeholder="Search (press /)" autocomplete="off" />
+        <kbd>/</kbd>
+      </div>
+      <button class="btn ghost" id="help-btn" title="Keyboard shortcuts (?)">?</button>
+    </header>
+
+    <div class="pulse" id="pulse"></div>
+
+    <nav class="tabs" id="nav">
+      <button data-tab="pulse" class="active">Pulse</button>
+      <button data-tab="routines">Routines <span class="count" id="count-routines">·</span></button>
+      <button data-tab="missions">Missions <span class="count" id="count-missions">·</span></button>
+      <button data-tab="feed">Feed</button>
+      <button data-tab="inbox">Inbox <span class="count" id="count-inbox">·</span></button>
+      <button data-tab="calendar">Calendar <span class="count" id="count-calendar">·</span></button>
+      <button data-tab="memory">Memory</button>
+      <button data-tab="subagents">Subagents</button>
+      <button data-tab="audit">Audit</button>
+    </nav>
+
+    <main>
+      <section id="pulse" class="panel active">
+        <h2 class="section-title">Recent activity</h2>
+        <div id="recent-activity"></div>
+      </section>
+
+      <section id="routines" class="panel">
+        <div class="toolbar">
+          <div class="filter-group" id="routines-filter">
+            <button data-f="all" class="on">All</button>
+            <button data-f="active">Active</button>
+            <button data-f="paused">Paused</button>
+            <button data-f="builtin">Built-in</button>
+            <button data-f="custom">Custom</button>
+          </div>
+          <div class="grow"></div>
+          <button class="btn ghost" id="routines-refresh">↻ Refresh</button>
+        </div>
+        <div class="card-grid" id="routines-grid"></div>
+      </section>
+
+      <section id="missions" class="panel">
+        <div class="toolbar">
+          <h2 class="section-title" style="margin:0">Mission queue</h2>
+          <div class="grow"></div>
+          <button class="btn ghost" id="missions-refresh">↻ Refresh</button>
+        </div>
+        <div class="board">
+          <div class="column">
+            <h3>Queued <span class="count" id="missions-queued-count">0</span></h3>
+            <div id="missions-queued"></div>
+          </div>
+          <div class="column">
+            <h3>Running <span class="count" id="missions-running-count">0</span></h3>
+            <div id="missions-running"></div>
+          </div>
+          <div class="column">
+            <h3>Recent <span class="count" id="missions-recent-count">0</span></h3>
+            <div id="missions-recent"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="feed" class="panel">
+        <div class="toolbar">
+          <div class="filter-group" id="feed-filter">
+            <button data-f="all" class="on">All</button>
+            <button data-f="agent">Agent</button>
+            <button data-f="chat_error">Errors</button>
+            <button data-f="session">Sessions</button>
+          </div>
+          <div class="grow"></div>
+          <span id="feed-status" class="heartbeat">· idle</span>
+          <button class="btn ghost" id="feed-pause">⏸ Pause</button>
+          <button class="btn ghost" id="feed-clear">Clear</button>
+        </div>
+        <div class="feed" id="feed-list">
+          <div class="empty">
+            <div class="icon">◌</div>
+            <div class="msg">Waiting for live events…</div>
+            <div class="hint">Start a chat in Telegram to see activity here.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="inbox" class="panel">
+        <h2 class="section-title">Open tasks</h2>
+        <div id="tasks-wrap"></div>
+        <h2 class="section-title" style="margin-top:24px">Recent Gmail</h2>
+        <div id="gmail-wrap"></div>
+      </section>
+
+      <section id="calendar" class="panel">
+        <h2 class="section-title">Upcoming events</h2>
+        <div id="calendar-wrap"></div>
+      </section>
+
+      <section id="memory" class="panel">
+        <h2 class="section-title">Recent vault chunks</h2>
+        <div id="memory-wrap"></div>
+      </section>
+
+      <section id="subagents" class="panel">
+        <h2 class="section-title">Subagent runs (last 50)</h2>
+        <div id="subagent-wrap"></div>
+        <h2 class="section-title" style="margin-top:24px">Routing by role (7d)</h2>
+        <div id="roles-wrap"></div>
+      </section>
+
+      <section id="audit" class="panel">
+        <h2 class="section-title">Audit log (last 100)</h2>
+        <div id="audit-wrap"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+  <div class="help-overlay" id="help-overlay">
+    <div class="help-card">
+      <h2>Keyboard shortcuts</h2>
+      <dl>
+        <dt>/</dt><dd>Focus search</dd>
+        <dt>?</dt><dd>Show this help</dd>
+        <dt>Esc</dt><dd>Close overlay / clear selection</dd>
+        <dt>g p</dt><dd>Pulse</dd>
+        <dt>g r</dt><dd>Routines</dd>
+        <dt>g m</dt><dd>Missions</dd>
+        <dt>g f</dt><dd>Feed</dd>
+        <dt>g i</dt><dd>Inbox</dd>
+        <dt>g c</dt><dd>Calendar</dd>
+        <dt>g a</dt><dd>Audit</dd>
+      </dl>
+    </div>
+  </div>
+
   <script>
     const TOKEN = ${JSON.stringify(token)};
-    const qs = '?token=' + encodeURIComponent(TOKEN);
+    const AUTH = { Authorization: 'Bearer ' + TOKEN };
 
-    async function j(url){ const r = await fetch(url + qs); if(!r.ok) throw new Error(url+' '+r.status); return r.json(); }
+    // ───── fetch helpers ─────
+    function withQ(url){ return url + (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN); }
+    async function getJson(url){
+      const r = await fetch(withQ(url));
+      if (!r.ok) throw new Error(url + ' ' + r.status);
+      return r.json();
+    }
+    async function postJson(url, body){
+      const r = await fetch(withQ(url), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-dashboard-token': TOKEN },
+        body: JSON.stringify(body ?? {}),
+      });
+      let data = null;
+      try { data = await r.json(); } catch { /* no body */ }
+      if (!r.ok) throw Object.assign(new Error((data && data.error) || (url + ' ' + r.status)), { status: r.status, data });
+      return data;
+    }
 
-    function el(t, props, ...kids){
-      const n = document.createElement(t);
-      if (props) for (const k in props) {
-        if (k === 'className') n.className = props[k];
-        else if (k === 'html') n.innerHTML = props[k];
-        else n.setAttribute(k, props[k]);
+    // ───── toasts ─────
+    const toastsEl = document.getElementById('toasts');
+    function toast(msg, level = 'info', ms = 3800){
+      const t = document.createElement('div');
+      t.className = 'toast ' + level;
+      t.innerHTML = '<span>' + escapeHtml(msg) + '</span>';
+      const close = document.createElement('button');
+      close.className = 'close';
+      close.textContent = '×';
+      close.onclick = () => t.remove();
+      t.append(close);
+      toastsEl.append(t);
+      if (ms > 0) setTimeout(() => t.remove(), ms);
+    }
+
+    // ───── utils ─────
+    function escapeHtml(s){
+      return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
+    function fmtTs(ms){ if(!ms) return '—'; return new Date(ms).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }); }
+    function fmtClock(ms){ if(!ms) return '—'; return new Date(ms).toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit', second:'2-digit' }); }
+    function fmtRel(ms){
+      if(!ms) return '—';
+      const diff = Date.now() - ms;
+      const future = diff < 0;
+      const s = Math.abs(diff) / 1000;
+      const n = v => v.toFixed(0);
+      const body = s < 60 ? n(s)+'s'
+        : s < 3600 ? n(s/60)+'m'
+        : s < 86400 ? n(s/3600)+'h'
+        : n(s/86400)+'d';
+      return future ? 'in ' + body : body + ' ago';
+    }
+    function fmtDuration(ms){
+      if (ms == null) return '—';
+      if (ms < 1000) return ms + 'ms';
+      if (ms < 60_000) return (ms/1000).toFixed(1) + 's';
+      return (ms/60_000).toFixed(1) + 'm';
+    }
+    function humanCron(expr){
+      if (!expr) return '';
+      const m = /^\\*\\/(\\d+)\\s+\\*\\s+\\*\\s+\\*\\s+\\*$/.exec(expr);
+      if (m) return 'every ' + m[1] + ' min';
+      const daily = /^(\\d+)\\s+(\\d+)\\s+\\*\\s+\\*\\s+\\*$/.exec(expr);
+      if (daily) return 'daily ' + String(daily[2]).padStart(2,'0') + ':' + String(daily[1]).padStart(2,'0');
+      const dow = /^(\\d+)\\s+(\\d+)\\s+\\*\\s+\\*\\s+([0-6])$/.exec(expr);
+      if (dow) {
+        const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        return days[+dow[3]] + ' ' + String(dow[2]).padStart(2,'0') + ':' + String(dow[1]).padStart(2,'0');
       }
-      for (const kid of kids) if (kid != null) n.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
-      return n;
+      return expr;
+    }
+    function compactNum(n){
+      n = Number(n || 0);
+      if (n >= 1_000_000) return (n/1_000_000).toFixed(1) + 'M';
+      if (n >= 1_000) return (n/1_000).toFixed(1) + 'k';
+      return String(n);
     }
 
-    function pill(v){ return '<span class="pill '+v+'">'+v+'</span>'; }
+    // ───── state ─────
+    const state = {
+      heartbeat: null,
+      schedRows: [],
+      missionRows: [],
+      search: '',
+      routineFilter: 'all',
+      feedFilter: 'all',
+      feedPaused: false,
+      feed: [],
+      errorsWindow: [],
+      tokensToday: 0,
+      lastActivity: null,
+      loadedTabs: new Set(['pulse']),
+    };
 
-    function fmtTs(ms){ if(!ms) return '—'; const d=new Date(ms); return d.toLocaleString(); }
-    function fmtRel(ms){ if(!ms) return '—'; const s=(Date.now()-ms)/1000; if(s<60) return Math.round(s)+'s ago'; if(s<3600) return Math.round(s/60)+'m ago'; if(s<86400) return Math.round(s/3600)+'h ago'; return Math.round(s/86400)+'d ago'; }
-
-    function tableHtml(headers, rows, rowFn){
-      const thead = '<thead><tr>' + headers.map(h=>'<th>'+h+'</th>').join('') + '</tr></thead>';
-      const tbody = '<tbody>' + rows.map(rowFn).join('') + '</tbody>';
-      return thead + tbody;
+    // ───── health + pulse ─────
+    async function pollHeartbeat(){
+      try {
+        const h = await getJson('/api/health');
+        state.heartbeat = h;
+        document.body.classList.remove('offline','degraded');
+        const up = Math.floor(h.uptime_s / 60);
+        document.getElementById('heartbeat').textContent = 'pid ' + h.pid + ' · up ' + (up < 60 ? up + 'm' : (up/60).toFixed(1) + 'h') + ' · ' + fmtClock(Date.now());
+      } catch (e) {
+        document.body.classList.add('offline');
+        document.getElementById('heartbeat').textContent = 'offline — check the daemon';
+      }
     }
 
-    async function loadOverview(){
-      const [h, t] = await Promise.all([j('/api/health'), j('/api/tokens')]);
-      document.getElementById('meta').textContent = 'pid ' + h.pid + ' · up ' + Math.floor(h.uptime_s/60) + 'm · ' + fmtTs(Date.now());
-      const cards = document.getElementById('overview-cards');
-      cards.innerHTML = '';
-      const mk = (label, n) => cards.appendChild(el('div',{className:'card'}, el('h3',null,label), el('div',{className:'n'}, String(n))));
-      mk('Conversation rows', h.convo_rows);
-      mk('Memory chunks', h.memory_chunks);
-      mk('Audit rows', h.audit_rows);
-      mk('Tokens (24h)', t.today);
-      mk('Backends (7d)', t.byBackend.length);
-      mk('Uptime', Math.floor(h.uptime_s/60) + 'm');
-      const recent = document.getElementById('recent-tokens');
-      recent.innerHTML = tableHtml(
-        ['When','Backend','Model','In','Out','Dur'],
-        t.recent,
-        r => '<tr><td class="mono">'+fmtRel(r.created_at)+'</td><td>'+r.backend+'</td><td class="mono">'+(r.model||'—')+'</td><td class="right">'+r.input_tokens+'</td><td class="right">'+r.output_tokens+'</td><td class="right">'+(r.duration_ms||0)+'ms</td></tr>'
-      );
+    async function renderPulse(){
+      let tokens = null;
+      try { tokens = await getJson('/api/tokens'); state.tokensToday = tokens.today; } catch { /* ignore */ }
+
+      const activeSched = state.schedRows.filter(r => r.status === 'active').length;
+      const pausedSched = state.schedRows.filter(r => r.status === 'paused').length;
+      const runningMissions = state.missionRows.filter(r => r.status === 'running' || r.status === 'queued').length;
+      const last10m = Date.now() - 10 * 60 * 1000;
+      const errors = state.errorsWindow.filter(t => t > last10m).length;
+
+      const pulse = document.getElementById('pulse');
+      const h = state.heartbeat;
+      const up = h ? Math.floor(h.uptime_s / 60) : 0;
+      pulse.innerHTML = '';
+      const addCell = (cls, label, value, sub) => {
+        const c = document.createElement('div');
+        c.className = 'pulse-cell ' + cls;
+        c.innerHTML = '<div class="label">' + escapeHtml(label) + '</div><div class="value">' + escapeHtml(value) + '</div><div class="sub">' + escapeHtml(sub || '') + '</div>';
+        pulse.appendChild(c);
+      };
+      addCell(h ? 'ok' : 'danger', 'status', h ? 'online' : 'offline', h ? (up < 60 ? up + 'm uptime' : (up/60).toFixed(1) + 'h uptime') : 'daemon unreachable');
+      addCell('info', 'routines', activeSched + ' active', pausedSched ? pausedSched + ' paused' : 'all firing');
+      addCell(runningMissions ? 'warn' : 'ok', 'queue', String(runningMissions), runningMissions ? 'in flight' : 'idle');
+      addCell(errors ? 'danger' : 'ok', 'errors 10m', String(errors), errors ? 'needs attention' : 'clean');
+      addCell('info', 'tokens 24h', compactNum(state.tokensToday), (tokens && tokens.byBackend?.length) ? tokens.byBackend.length + ' backends' : '');
+      addCell('ok', 'last activity', state.lastActivity ? fmtRel(state.lastActivity) : '—', state.lastActivity ? fmtClock(state.lastActivity) : 'no events yet');
     }
-    async function loadSched(){
-      const { rows } = await j('/api/scheduler');
-      document.getElementById('sched-table').innerHTML = tableHtml(
-        ['Name','Mission','Schedule','Next','Last','Result','Prio','Status'],
-        rows,
-        r => '<tr><td>'+r.name+'</td><td class="mono">'+r.mission+'</td><td class="mono">'+r.schedule+'</td><td class="mono">'+fmtTs(r.next_run)+'</td><td class="mono">'+fmtRel(r.last_run)+'</td><td class="mono truncate">'+(r.last_result||'—')+'</td><td class="right">'+r.priority+'</td><td>'+pill(r.status)+'</td></tr>'
-      );
+
+    async function renderRecentActivity(){
+      const wrap = document.getElementById('recent-activity');
+      let tokens = null;
+      try { tokens = await getJson('/api/tokens'); } catch { wrap.innerHTML = '<div class="empty"><div class="icon">⚠</div><div class="msg">Could not load token stats</div></div>'; return; }
+      if (!tokens.recent?.length) {
+        wrap.innerHTML = '<div class="empty"><div class="icon">○</div><div class="msg">No agent runs yet</div><div class="hint">DM the bot on Telegram — activity will land here.</div></div>';
+        return;
+      }
+      const headers = ['When','Backend','Model','In','Out','Duration'];
+      wrap.innerHTML = '<table><thead><tr>' + headers.map(h=>'<th>'+h+'</th>').join('') + '</tr></thead><tbody>' +
+        tokens.recent.map(r =>
+          '<tr><td class="mono muted">' + escapeHtml(fmtRel(r.created_at)) + '</td>' +
+          '<td>' + escapeHtml(r.backend) + '</td>' +
+          '<td class="mono muted">' + escapeHtml(r.model || '—') + '</td>' +
+          '<td class="right mono">' + escapeHtml(String(r.input_tokens)) + '</td>' +
+          '<td class="right mono">' + escapeHtml(String(r.output_tokens)) + '</td>' +
+          '<td class="right mono muted">' + escapeHtml(fmtDuration(r.duration_ms)) + '</td></tr>'
+        ).join('') +
+        '</tbody></table>';
     }
-    async function loadMissions(){
-      const { rows } = await j('/api/missions');
-      document.getElementById('mission-table').innerHTML = tableHtml(
-        ['ID','Title','Mission','Agent','Status','Started','Result'],
-        rows,
-        r => '<tr><td class="mono">'+r.id+'</td><td>'+r.title+'</td><td class="mono">'+(r.mission||'—')+'</td><td>'+r.assigned_agent+'</td><td>'+pill(r.status)+'</td><td class="mono">'+fmtRel(r.started_at)+'</td><td class="truncate">'+(r.result||'—')+'</td></tr>'
-      );
+
+    // ───── routines ─────
+    async function loadRoutines(){
+      const grid = document.getElementById('routines-grid');
+      if (!state.schedRows.length) grid.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
+      try {
+        const { rows } = await getJson('/api/scheduler');
+        state.schedRows = rows;
+        renderRoutines();
+        updateTabCounts();
+      } catch (e) {
+        grid.innerHTML = '<div class="empty"><div class="icon">⚠</div><div class="msg">Failed to load routines</div><div class="hint">' + escapeHtml(e.message) + '</div></div>';
+      }
     }
-    async function loadMemory(){
-      const { rows } = await j('/api/memories');
-      document.getElementById('memory-table').innerHTML = tableHtml(
-        ['Kind','Ref','Idx','Preview','mtime','Created'],
-        rows,
-        r => '<tr><td>'+r.source_kind+'</td><td class="mono truncate">'+r.source_ref+'</td><td class="right">'+r.chunk_idx+'</td><td class="truncate">'+(r.preview||'').replace(/[<>]/g, m=>({ '<':'&lt;','>':'&gt;' }[m]))+'</td><td class="mono">'+fmtRel(r.mtime)+'</td><td class="mono">'+fmtRel(r.created_at)+'</td></tr>'
-      );
-    }
-    async function loadGmail(){
-      const { rows } = await j('/api/gmail');
-      document.getElementById('gmail-table').innerHTML = tableHtml(
-        ['When','Sender','Subject','Snippet','Imp','Unread'],
-        rows,
-        r => {
-          const imp = r.importance != null ? r.importance : '—';
-          const unread = r.unread ? 'YES' : '';
-          const subj = (r.subject||'').replace(/[<>]/g, m=>({ '<':'&lt;','>':'&gt;' }[m]));
-          const snip = (r.snippet||'').slice(0,140).replace(/[<>]/g, m=>({ '<':'&lt;','>':'&gt;' }[m]));
-          return '<tr><td class="mono">'+fmtRel(r.internal_date)+'</td><td class="mono truncate">'+(r.sender||'—')+'</td><td class="truncate">'+subj+'</td><td class="truncate muted">'+snip+'</td><td class="right">'+imp+'</td><td class="'+(r.unread?'bad':'muted')+'">'+unread+'</td></tr>';
-        }
-      );
-    }
-    async function loadCalendar(){
-      const { rows } = await j('/api/calendar');
-      document.getElementById('calendar-table').innerHTML = tableHtml(
-        ['Starts','Ends','Summary','Location','Meet','Attendees'],
-        rows,
-        r => {
-          const summ = (r.summary||'(no title)').replace(/[<>]/g, m=>({ '<':'&lt;','>':'&gt;' }[m]));
-          const meet = r.meet_link ? '<a href="'+r.meet_link+'" target="_blank">join</a>' : '—';
-          const att = r.attendees ? String(r.attendees).split(',').length : 0;
-          return '<tr><td class="mono">'+fmtTs(r.starts_at)+'</td><td class="mono">'+fmtTs(r.ends_at)+'</td><td>'+summ+'</td><td class="muted truncate">'+(r.location||'—')+'</td><td class="mono">'+meet+'</td><td class="right">'+att+'</td></tr>';
-        }
-      );
-    }
-    async function loadTasks(){
-      const { rows } = await j('/api/tasks');
-      document.getElementById('tasks-table').innerHTML = tableHtml(
-        ['Status','Title','Due','Imp','List','Updated'],
-        rows,
-        r => {
-          const title = (r.title||'').replace(/[<>]/g, m=>({ '<':'&lt;','>':'&gt;' }[m]));
-          const imp = r.importance != null ? r.importance : '—';
-          return '<tr><td>'+pill(r.status)+'</td><td>'+title+'</td><td class="mono">'+fmtTs(r.due_ts)+'</td><td class="right">'+imp+'</td><td class="mono muted">'+(r.list_id||'—')+'</td><td class="mono">'+fmtRel(r.updated_at)+'</td></tr>';
-        }
-      );
-    }
-    async function loadSubagents(){
-      const { rows } = await j('/api/subagents');
-      document.getElementById('subagent-table').innerHTML = tableHtml(
-        ['When','Mode','Role','Backend','Judge','Dur','Out','Outcome','Preview'],
-        rows,
-        r => '<tr><td class="mono">'+fmtRel(r.created_at)+'</td><td>'+r.mode+'</td><td class="mono">'+(r.role||'—')+'</td><td class="mono">'+r.backend+'</td><td class="mono">'+(r.judge||'—')+'</td><td class="right">'+(r.duration_ms||0)+'ms</td><td class="right">'+(r.output_tokens||'—')+'</td><td>'+pill(r.outcome)+'</td><td class="truncate">'+(r.prompt_preview||'')+'</td></tr>'
-      );
-    }
-    async function loadRoles(){
-      const { rows, hours } = await j('/api/roles?hours=168');
-      document.getElementById('role-table').innerHTML = tableHtml(
-        ['Role','Runs','OK','Err','OK %','Avg ms'],
-        rows,
-        r => {
-          const pct = r.n > 0 ? Math.round((r.ok / r.n) * 100) : 0;
-          const avg = r.avg_ms != null ? Math.round(r.avg_ms) : '—';
-          return '<tr><td class="mono">'+r.role+'</td><td class="right">'+r.n+'</td><td class="right ok">'+r.ok+'</td><td class="right bad">'+r.err+'</td><td class="right">'+pct+'%</td><td class="right mono">'+avg+'</td></tr>';
-        }
-      );
-    }
-    async function loadAudit(){
-      const { rows } = await j('/api/audit');
-      document.getElementById('audit-table').innerHTML = tableHtml(
-        ['When','Event','Detail','Blocked','Chat','Agent'],
-        rows,
-        r => '<tr><td class="mono">'+fmtRel(r.created_at)+'</td><td><span class="pill '+(r.blocked?'error':'')+'">'+r.event_type+'</span></td><td class="truncate">'+(r.detail||'')+'</td><td class="'+(r.blocked?'bad':'ok')+'">'+(r.blocked?'YES':'no')+'</td><td class="mono">'+(r.chat_id||'—')+'</td><td class="mono">'+r.agent_id+'</td></tr>'
-      );
-    }
-    function startLive(){
-      const feed = document.getElementById('live-feed');
-      const es = new EventSource('/api/events' + qs);
-      ['session_start','message_received','agent_started','agent_completed','chat_error','session_end','ping'].forEach(name => {
-        es.addEventListener(name, (ev) => {
-          const data = (() => { try { return JSON.parse(ev.data); } catch { return ev.data; } })();
-          const line = document.createElement('div');
-          const t = new Date().toLocaleTimeString();
-          line.innerHTML = '<span class="muted">['+t+']</span> <span class="name">'+name+'</span> <span class="muted">'+JSON.stringify(data).slice(0,200)+'</span>';
-          feed.prepend(line);
-          while (feed.children.length > 120) feed.removeChild(feed.lastChild);
-        });
+
+    function renderRoutines(){
+      const grid = document.getElementById('routines-grid');
+      const q = state.search.trim().toLowerCase();
+      const filter = state.routineFilter;
+      const rows = state.schedRows.filter(r => {
+        if (q && !(r.name.toLowerCase().includes(q) || (r.mission||'').toLowerCase().includes(q))) return false;
+        if (filter === 'active' && r.status !== 'active') return false;
+        if (filter === 'paused' && r.status !== 'paused') return false;
+        if (filter === 'builtin' && !r.is_builtin) return false;
+        if (filter === 'custom' && r.is_builtin) return false;
+        return true;
+      });
+      if (!rows.length) {
+        grid.innerHTML = '<div class="empty"><div class="icon">∅</div><div class="msg">No routines match</div><div class="hint">Try the All filter or adjust your search.</div></div>';
+        return;
+      }
+      grid.innerHTML = rows.map(r => routineCard(r)).join('');
+      grid.querySelectorAll('[data-action]').forEach(btn => {
+        btn.addEventListener('click', onRoutineAction);
       });
     }
 
-    const TABS = {
-      overview: loadOverview,
-      scheduler: loadSched,
-      missions: loadMissions,
-      memories: loadMemory,
-      gmail: loadGmail,
-      calendar: loadCalendar,
-      tasks: loadTasks,
-      subagents: loadSubagents,
-      roles: loadRoles,
-      audit: loadAudit,
-      live: startLive,
-    };
+    function routineCard(r){
+      const resultClass = (r.last_result || '').startsWith('error') ? 'err' : (r.last_result ? 'ok' : '');
+      const human = humanCron(r.schedule);
+      const nextCountdown = r.status === 'active' && r.next_run ? fmtRel(r.next_run) : (r.status === 'paused' ? 'paused' : '—');
+      return \`
+        <div class="card" data-name="\${escapeHtml(r.name)}">
+          <div class="title-row">
+            <span class="title">\${escapeHtml(r.name)}</span>
+            \${r.is_builtin ? '<span class="pill builtin" title="Built-in routine — deletion is soft; will re-register on next restart">★ built-in</span>' : ''}
+            <span class="pill \${escapeHtml(r.status)}">\${escapeHtml(r.status)}</span>
+          </div>
+          <div class="sub">\${escapeHtml(r.mission)}</div>
+          <div class="meta-row">
+            <span><span class="k">schedule</span><span class="mono">\${escapeHtml(human)}</span></span>
+            <span><span class="k">next</span><span class="mono">\${escapeHtml(nextCountdown)}</span></span>
+          </div>
+          <div class="meta-row">
+            <span><span class="k">last</span><span class="mono">\${escapeHtml(fmtRel(r.last_run))}</span></span>
+            <span><span class="k">prio</span><span class="mono">\${escapeHtml(String(r.priority))}</span></span>
+          </div>
+          \${r.last_result ? \`<div class="result \${resultClass}" title="Click to expand">\${escapeHtml(r.last_result)}</div>\` : ''}
+          <div class="card-actions">
+            <button class="btn primary" data-action="run-now" data-name="\${escapeHtml(r.name)}">▶ Run now</button>
+            \${r.status === 'paused'
+              ? \`<button class="btn" data-action="resume" data-name="\${escapeHtml(r.name)}">Resume</button>\`
+              : \`<button class="btn" data-action="pause" data-name="\${escapeHtml(r.name)}">Pause</button>\`}
+            <div class="grow" style="flex:1"></div>
+            <button class="btn danger" data-action="delete" data-name="\${escapeHtml(r.name)}">Delete</button>
+          </div>
+        </div>
+      \`;
+    }
 
-    document.getElementById('nav').addEventListener('click', (ev) => {
-      const btn = ev.target.closest('button[data-tab]');
-      if (!btn) return;
-      const tab = btn.dataset.tab;
-      document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b === btn));
-      document.querySelectorAll('main > section').forEach(s => s.classList.toggle('active', s.id === tab));
-      (TABS[tab] || (() => {}))();
+    async function onRoutineAction(ev){
+      const btn = ev.currentTarget;
+      const name = btn.dataset.name;
+      const action = btn.dataset.action;
+      if (action === 'delete') {
+        return showDeleteConfirm(btn, name);
+      }
+      btn.disabled = true;
+      const original = btn.innerHTML;
+      btn.innerHTML = '<span class="spinner"></span> ' + original.replace(/^.\\s*/,'');
+      try {
+        let url;
+        if (action === 'run-now') url = '/api/scheduler/' + encodeURIComponent(name) + '/run-now';
+        else if (action === 'pause') url = '/api/scheduler/' + encodeURIComponent(name) + '/pause';
+        else if (action === 'resume') url = '/api/scheduler/' + encodeURIComponent(name) + '/resume';
+        const r = await postJson(url);
+        toast(action === 'run-now' ? name + ' queued' : name + ' ' + r.status, 'ok');
+        await loadRoutines();
+      } catch (e) {
+        toast(name + ': ' + e.message, 'err');
+        btn.disabled = false;
+        btn.innerHTML = original;
+      }
+    }
+
+    function showDeleteConfirm(btn, name){
+      const parent = btn.parentElement;
+      const isBuiltin = state.schedRows.find(r => r.name === name)?.is_builtin;
+      const confirm = document.createElement('div');
+      confirm.className = 'confirm';
+      confirm.innerHTML = (isBuiltin
+        ? 'Built-in — re-registers on restart. Delete anyway?'
+        : 'Delete this routine?');
+      const yes = document.createElement('button');
+      yes.className = 'btn danger';
+      yes.textContent = 'Yes, delete';
+      yes.onclick = async () => {
+        yes.disabled = true;
+        yes.innerHTML = '<span class="spinner"></span>';
+        try {
+          const r = await postJson('/api/scheduler/' + encodeURIComponent(name) + '/delete');
+          toast(name + ' deleted' + (r.note ? ' — ' + r.note : ''), 'ok', 6000);
+          await loadRoutines();
+        } catch (e) {
+          toast(name + ': ' + e.message, 'err');
+          yes.disabled = false;
+          yes.textContent = 'Yes, delete';
+        }
+      };
+      const no = document.createElement('button');
+      no.className = 'btn ghost';
+      no.textContent = 'Cancel';
+      no.onclick = () => { parent.replaceChild(btn, confirm); };
+      confirm.append(yes, no);
+      parent.replaceChild(confirm, btn);
+    }
+
+    document.getElementById('routines-filter').addEventListener('click', (ev) => {
+      const b = ev.target.closest('button[data-f]'); if (!b) return;
+      state.routineFilter = b.dataset.f;
+      document.querySelectorAll('#routines-filter button').forEach(x => x.classList.toggle('on', x === b));
+      renderRoutines();
+    });
+    document.getElementById('routines-refresh').addEventListener('click', loadRoutines);
+
+    // ───── missions ─────
+    async function loadMissions(){
+      try {
+        const { rows } = await getJson('/api/missions');
+        state.missionRows = rows;
+        renderMissions();
+        updateTabCounts();
+      } catch (e) {
+        toast('Missions load failed: ' + e.message, 'err');
+      }
+    }
+    function renderMissions(){
+      const queued = state.missionRows.filter(r => r.status === 'queued');
+      const running = state.missionRows.filter(r => r.status === 'running');
+      const recent = state.missionRows.filter(r => ['done','failed','cancelled','error'].includes(r.status)).slice(0, 20);
+      setColumn('queued', queued);
+      setColumn('running', running);
+      setColumn('recent', recent);
+      document.getElementById('missions-queued-count').textContent = queued.length;
+      document.getElementById('missions-running-count').textContent = running.length;
+      document.getElementById('missions-recent-count').textContent = recent.length;
+    }
+    function setColumn(id, rows){
+      const wrap = document.getElementById('missions-' + id);
+      if (!rows.length) {
+        wrap.innerHTML = '<div class="empty" style="padding:22px 10px"><div class="msg">Empty</div></div>';
+        return;
+      }
+      wrap.innerHTML = rows.map(r => missionCard(r, id)).join('');
+      wrap.querySelectorAll('[data-mission-action]').forEach(btn => btn.addEventListener('click', onMissionAction));
+    }
+    function missionCard(r, col){
+      const actions = col === 'queued'
+        ? \`<button class="btn ghost" data-mission-action="cancel" data-id="\${r.id}">Cancel</button>\`
+        : (col === 'recent' && r.mission)
+          ? \`<button class="btn ghost" data-mission-action="retry" data-id="\${r.id}">↻ Retry</button>\`
+          : '';
+      return \`
+        <div class="mission">
+          <div class="title">\${escapeHtml(r.title)}</div>
+          <div class="meta">
+            <span class="pill \${escapeHtml(r.status)}">\${escapeHtml(r.status)}</span>
+            <span class="mono">#\${r.id}</span>
+            <span class="mono">\${escapeHtml(r.assigned_agent || '—')}</span>
+            <span>\${escapeHtml(fmtRel(r.started_at || r.created_at))}</span>
+          </div>
+          \${r.result ? \`<div class="result-preview">\${escapeHtml(String(r.result).slice(0, 220))}</div>\` : ''}
+          <div class="mission-actions">\${actions}</div>
+        </div>
+      \`;
+    }
+    async function onMissionAction(ev){
+      const btn = ev.currentTarget;
+      const id = btn.dataset.id;
+      const action = btn.dataset.missionAction;
+      btn.disabled = true;
+      const original = btn.innerHTML;
+      btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        const url = '/api/missions/' + encodeURIComponent(id) + '/' + action;
+        const r = await postJson(url);
+        toast('mission #' + id + ' ' + (r.status || action), 'ok');
+        await loadMissions();
+      } catch (e) {
+        toast('mission #' + id + ': ' + e.message, 'err');
+        btn.disabled = false;
+        btn.innerHTML = original;
+      }
+    }
+    document.getElementById('missions-refresh').addEventListener('click', loadMissions);
+
+    // ───── feed ─────
+    let eventSource = null;
+    function ensureFeed(){
+      if (eventSource) return;
+      document.getElementById('feed-status').textContent = '· connecting';
+      eventSource = new EventSource(withQ('/api/events'));
+      const types = ['session_start','message_received','agent_started','agent_completed','chat_error','session_end'];
+      types.forEach(type => {
+        eventSource.addEventListener(type, ev => {
+          if (state.feedPaused) return;
+          let data; try { data = JSON.parse(ev.data); } catch { data = ev.data; }
+          pushFeedEntry({ type, ts: Date.now(), data });
+          state.lastActivity = Date.now();
+          if (type === 'chat_error') state.errorsWindow.push(Date.now());
+        });
+      });
+      eventSource.addEventListener('ping', () => {
+        document.getElementById('feed-status').textContent = '· live';
+      });
+      eventSource.addEventListener('error', () => {
+        document.getElementById('feed-status').textContent = '· reconnecting';
+      });
+      eventSource.onopen = () => {
+        document.getElementById('feed-status').textContent = '· live';
+      };
+    }
+    function pushFeedEntry(entry){
+      state.feed.unshift(entry);
+      if (state.feed.length > 500) state.feed.length = 500;
+      renderFeed();
+    }
+    function renderFeed(){
+      const list = document.getElementById('feed-list');
+      const f = state.feedFilter;
+      const q = state.search.trim().toLowerCase();
+      const rows = state.feed.filter(e => {
+        if (f === 'agent' && !e.type.startsWith('agent')) return false;
+        if (f === 'session' && !e.type.startsWith('session')) return false;
+        if (f === 'chat_error' && e.type !== 'chat_error') return false;
+        if (q) {
+          const hay = (e.type + ' ' + JSON.stringify(e.data)).toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+      if (!rows.length) {
+        list.innerHTML = '<div class="empty"><div class="icon">◌</div><div class="msg">Waiting for live events…</div><div class="hint">Events appear here in real time.</div></div>';
+        return;
+      }
+      list.innerHTML = rows.map(e =>
+        '<div class="entry ' + e.type + '"><span class="ts">' + fmtClock(e.ts) + '</span><span class="kind">' + e.type + '</span><span class="payload" title="' + escapeHtml(JSON.stringify(e.data)) + '">' + escapeHtml(JSON.stringify(e.data)) + '</span></div>'
+      ).join('');
+    }
+    document.getElementById('feed-filter').addEventListener('click', (ev) => {
+      const b = ev.target.closest('button[data-f]'); if (!b) return;
+      state.feedFilter = b.dataset.f;
+      document.querySelectorAll('#feed-filter button').forEach(x => x.classList.toggle('on', x === b));
+      renderFeed();
+    });
+    document.getElementById('feed-pause').addEventListener('click', () => {
+      state.feedPaused = !state.feedPaused;
+      const btn = document.getElementById('feed-pause');
+      btn.textContent = state.feedPaused ? '▶ Resume' : '⏸ Pause';
+      document.getElementById('feed-status').textContent = state.feedPaused ? '· paused' : '· live';
+    });
+    document.getElementById('feed-clear').addEventListener('click', () => {
+      state.feed = [];
+      renderFeed();
     });
 
-    loadOverview();
-    setInterval(() => {
-      const active = document.querySelector('nav button.active')?.dataset?.tab;
-      if (active && active !== 'live') (TABS[active] || (() => {}))();
-    }, 15000);
+    // ───── inbox (tasks + gmail) ─────
+    async function loadInbox(){
+      const [tasks, gmail] = await Promise.all([
+        getJson('/api/tasks').catch(()=>({rows:[]})),
+        getJson('/api/gmail').catch(()=>({rows:[]})),
+      ]);
+      renderTasks(tasks.rows);
+      renderGmail(gmail.rows);
+      updateTabCounts(tasks.rows, gmail.rows);
+    }
+    function renderTasks(rows){
+      const wrap = document.getElementById('tasks-wrap');
+      if (!rows.length) { wrap.innerHTML = '<div class="empty"><div class="icon">☑</div><div class="msg">No open tasks</div></div>'; return; }
+      wrap.innerHTML = '<table><thead><tr><th>Status</th><th>Title</th><th>Due</th><th>Imp</th><th>List</th><th class="right">Updated</th></tr></thead><tbody>' +
+        rows.map(r =>
+          '<tr><td><span class="pill ' + escapeHtml(r.status) + '">' + escapeHtml(r.status) + '</span></td>' +
+          '<td>' + escapeHtml(r.title || '') + '</td>' +
+          '<td class="mono muted">' + escapeHtml(fmtTs(r.due_ts)) + '</td>' +
+          '<td class="right mono">' + escapeHtml(r.importance != null ? String(r.importance) : '—') + '</td>' +
+          '<td class="mono muted">' + escapeHtml(r.list_id || '—') + '</td>' +
+          '<td class="right mono muted">' + escapeHtml(fmtRel(r.updated_at)) + '</td></tr>'
+        ).join('') + '</tbody></table>';
+    }
+    function renderGmail(rows){
+      const wrap = document.getElementById('gmail-wrap');
+      if (!rows.length) { wrap.innerHTML = '<div class="empty"><div class="icon">✉</div><div class="msg">Inbox empty</div></div>'; return; }
+      wrap.innerHTML = '<table><thead><tr><th>When</th><th>Sender</th><th>Subject</th><th>Snippet</th><th class="right">Imp</th><th>Unread</th></tr></thead><tbody>' +
+        rows.map(r =>
+          '<tr><td class="mono muted">' + escapeHtml(fmtRel(r.internal_date)) + '</td>' +
+          '<td class="mono truncate">' + escapeHtml(r.sender || '—') + '</td>' +
+          '<td class="truncate">' + escapeHtml(r.subject || '') + '</td>' +
+          '<td class="truncate muted">' + escapeHtml((r.snippet || '').slice(0,160)) + '</td>' +
+          '<td class="right mono">' + escapeHtml(r.importance != null ? String(r.importance) : '—') + '</td>' +
+          '<td>' + (r.unread ? '<span class="pill warn">unread</span>' : '<span class="muted">—</span>') + '</td></tr>'
+        ).join('') + '</tbody></table>';
+    }
+
+    // ───── calendar ─────
+    async function loadCalendar(){
+      const wrap = document.getElementById('calendar-wrap');
+      try {
+        const { rows } = await getJson('/api/calendar');
+        if (!rows.length) { wrap.innerHTML = '<div class="empty"><div class="icon">📅</div><div class="msg">No upcoming events</div></div>'; updateTabCounts(null, null, 0); return; }
+        wrap.innerHTML = '<table><thead><tr><th>Starts</th><th>Ends</th><th>Summary</th><th>Location</th><th>Join</th></tr></thead><tbody>' +
+          rows.map(r =>
+            '<tr><td class="mono">' + escapeHtml(fmtTs(r.starts_at)) + '</td>' +
+            '<td class="mono muted">' + escapeHtml(fmtTs(r.ends_at)) + '</td>' +
+            '<td>' + escapeHtml(r.summary || '(no title)') + '</td>' +
+            '<td class="muted truncate">' + escapeHtml(r.location || '—') + '</td>' +
+            '<td class="mono">' + (r.meet_link ? '<a href="' + escapeHtml(r.meet_link) + '" target="_blank" rel="noopener">open</a>' : '—') + '</td></tr>'
+          ).join('') + '</tbody></table>';
+        updateTabCounts(null, null, rows.length);
+      } catch (e) {
+        wrap.innerHTML = '<div class="empty"><div class="icon">⚠</div><div class="msg">' + escapeHtml(e.message) + '</div></div>';
+      }
+    }
+
+    // ───── memory ─────
+    async function loadMemory(){
+      const wrap = document.getElementById('memory-wrap');
+      try {
+        const { rows } = await getJson('/api/memories');
+        if (!rows.length) { wrap.innerHTML = '<div class="empty"><div class="icon">◍</div><div class="msg">Memory index empty</div><div class="hint">Run <code>vault-reindex</code> from the Routines tab.</div></div>'; return; }
+        wrap.innerHTML = '<table><thead><tr><th>Kind</th><th>Ref</th><th class="right">Idx</th><th>Preview</th><th>mtime</th><th class="right">Created</th></tr></thead><tbody>' +
+          rows.map(r =>
+            '<tr><td>' + escapeHtml(r.source_kind) + '</td>' +
+            '<td class="mono truncate">' + escapeHtml(r.source_ref) + '</td>' +
+            '<td class="right mono">' + escapeHtml(String(r.chunk_idx)) + '</td>' +
+            '<td class="truncate muted">' + escapeHtml((r.preview || '').slice(0, 200)) + '</td>' +
+            '<td class="mono muted">' + escapeHtml(fmtRel(r.mtime)) + '</td>' +
+            '<td class="right mono muted">' + escapeHtml(fmtRel(r.created_at)) + '</td></tr>'
+          ).join('') + '</tbody></table>';
+      } catch (e) {
+        wrap.innerHTML = '<div class="empty"><div class="icon">⚠</div><div class="msg">' + escapeHtml(e.message) + '</div></div>';
+      }
+    }
+
+    // ───── subagents ─────
+    async function loadSubagents(){
+      const wrap = document.getElementById('subagent-wrap');
+      try {
+        const { rows } = await getJson('/api/subagents');
+        if (!rows.length) wrap.innerHTML = '<div class="empty"><div class="icon">◌</div><div class="msg">No subagent runs yet</div></div>';
+        else wrap.innerHTML = '<table><thead><tr><th>When</th><th>Role</th><th>Backend</th><th>Judge</th><th class="right">Dur</th><th>Outcome</th><th>Preview</th></tr></thead><tbody>' +
+          rows.map(r =>
+            '<tr><td class="mono muted">' + escapeHtml(fmtRel(r.created_at)) + '</td>' +
+            '<td class="mono">' + escapeHtml(r.role || '—') + '</td>' +
+            '<td class="mono">' + escapeHtml(r.backend) + '</td>' +
+            '<td class="mono muted">' + escapeHtml(r.judge || '—') + '</td>' +
+            '<td class="right mono">' + escapeHtml(fmtDuration(r.duration_ms)) + '</td>' +
+            '<td><span class="pill ' + escapeHtml(r.outcome) + '">' + escapeHtml(r.outcome) + '</span></td>' +
+            '<td class="truncate muted">' + escapeHtml(r.prompt_preview || '') + '</td></tr>'
+          ).join('') + '</tbody></table>';
+      } catch (e) {
+        wrap.innerHTML = '<div class="empty"><div class="icon">⚠</div><div class="msg">' + escapeHtml(e.message) + '</div></div>';
+      }
+      const rolesWrap = document.getElementById('roles-wrap');
+      try {
+        const { rows } = await getJson('/api/roles?hours=168');
+        if (!rows.length) rolesWrap.innerHTML = '<div class="empty"><div class="msg">No role telemetry yet</div></div>';
+        else rolesWrap.innerHTML = '<table><thead><tr><th>Role</th><th class="right">Runs</th><th class="right">OK</th><th class="right">Err</th><th class="right">OK %</th><th class="right">Avg</th></tr></thead><tbody>' +
+          rows.map(r => {
+            const pct = r.n > 0 ? Math.round((r.ok / r.n) * 100) : 0;
+            return '<tr><td class="mono">' + escapeHtml(r.role) + '</td>' +
+              '<td class="right mono">' + r.n + '</td>' +
+              '<td class="right mono" style="color:var(--ok)">' + r.ok + '</td>' +
+              '<td class="right mono" style="color:var(--danger)">' + r.err + '</td>' +
+              '<td class="right mono">' + pct + '%</td>' +
+              '<td class="right mono muted">' + fmtDuration(r.avg_ms != null ? Math.round(r.avg_ms) : null) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      } catch { /* quiet */ }
+    }
+
+    // ───── audit ─────
+    async function loadAudit(){
+      const wrap = document.getElementById('audit-wrap');
+      try {
+        const { rows } = await getJson('/api/audit');
+        if (!rows.length) { wrap.innerHTML = '<div class="empty"><div class="icon">☷</div><div class="msg">Audit log empty</div></div>'; return; }
+        wrap.innerHTML = '<table><thead><tr><th>When</th><th>Event</th><th>Detail</th><th>Blocked</th><th>Chat</th><th>Agent</th></tr></thead><tbody>' +
+          rows.map(r =>
+            '<tr><td class="mono muted">' + escapeHtml(fmtRel(r.created_at)) + '</td>' +
+            '<td><span class="pill ' + (r.blocked ? 'failed' : '') + '">' + escapeHtml(r.event_type) + '</span></td>' +
+            '<td class="truncate">' + escapeHtml(r.detail || '') + '</td>' +
+            '<td>' + (r.blocked ? '<span class="pill failed">yes</span>' : '<span class="muted">no</span>') + '</td>' +
+            '<td class="mono muted">' + escapeHtml(r.chat_id || '—') + '</td>' +
+            '<td class="mono">' + escapeHtml(r.agent_id) + '</td></tr>'
+          ).join('') + '</tbody></table>';
+      } catch (e) {
+        wrap.innerHTML = '<div class="empty"><div class="icon">⚠</div><div class="msg">' + escapeHtml(e.message) + '</div></div>';
+      }
+    }
+
+    // ───── tab counts ─────
+    function updateTabCounts(tasks, gmail, cal){
+      const r = state.schedRows.filter(x => x.status === 'active').length;
+      document.getElementById('count-routines').textContent = r || '·';
+      const m = state.missionRows.filter(x => x.status === 'running' || x.status === 'queued').length;
+      document.getElementById('count-missions').textContent = m || '·';
+      if (tasks !== undefined) document.getElementById('count-inbox').textContent = (tasks ? tasks.filter(t => t.status !== 'completed').length : 0) || '·';
+      if (cal !== undefined && cal !== null) document.getElementById('count-calendar').textContent = cal || '·';
+    }
+
+    // ───── tab switcher ─────
+    const TABS = {
+      pulse: async () => { await Promise.all([loadRoutines(), loadMissions(), renderPulse(), renderRecentActivity()]); },
+      routines: loadRoutines,
+      missions: loadMissions,
+      feed: () => { ensureFeed(); renderFeed(); },
+      inbox: loadInbox,
+      calendar: loadCalendar,
+      memory: loadMemory,
+      subagents: loadSubagents,
+      audit: loadAudit,
+    };
+
+    function switchTab(tab){
+      const btn = document.querySelector('nav.tabs button[data-tab="' + tab + '"]');
+      if (!btn) return;
+      document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('section.panel').forEach(s => s.classList.toggle('active', s.id === tab));
+      state.loadedTabs.add(tab);
+      (TABS[tab] || (() => {}))();
+      history.replaceState(null, '', '#' + tab);
+    }
+
+    document.getElementById('nav').addEventListener('click', (ev) => {
+      const btn = ev.target.closest('button[data-tab]'); if (!btn) return;
+      switchTab(btn.dataset.tab);
+    });
+
+    // ───── global search ─────
+    const searchInput = document.getElementById('search');
+    searchInput.addEventListener('input', () => {
+      state.search = searchInput.value;
+      const active = document.querySelector('nav.tabs button.active')?.dataset?.tab;
+      if (active === 'routines') renderRoutines();
+      if (active === 'feed') renderFeed();
+    });
+
+    // ───── keyboard ─────
+    let gPressed = false;
+    let gTimer = null;
+    document.addEventListener('keydown', (ev) => {
+      if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement) {
+        if (ev.key === 'Escape') ev.target.blur();
+        return;
+      }
+      if (ev.key === '/') { ev.preventDefault(); searchInput.focus(); return; }
+      if (ev.key === '?') { toggleHelp(true); return; }
+      if (ev.key === 'Escape') { toggleHelp(false); return; }
+      if (ev.key === 'g') {
+        gPressed = true;
+        clearTimeout(gTimer);
+        gTimer = setTimeout(() => { gPressed = false; }, 700);
+        return;
+      }
+      if (gPressed) {
+        const map = { p: 'pulse', r: 'routines', m: 'missions', f: 'feed', i: 'inbox', c: 'calendar', a: 'audit' };
+        if (map[ev.key]) { switchTab(map[ev.key]); gPressed = false; }
+      }
+    });
+
+    function toggleHelp(open){
+      const o = document.getElementById('help-overlay');
+      o.classList.toggle('open', open != null ? open : !o.classList.contains('open'));
+    }
+    document.getElementById('help-btn').addEventListener('click', () => toggleHelp());
+    document.getElementById('help-overlay').addEventListener('click', (ev) => {
+      if (ev.target.id === 'help-overlay') toggleHelp(false);
+    });
+
+    // ───── boot ─────
+    async function boot(){
+      const hash = location.hash.replace('#','');
+      if (hash && TABS[hash]) switchTab(hash);
+      else switchTab('pulse');
+      await pollHeartbeat();
+      setInterval(pollHeartbeat, 5000);
+      setInterval(() => {
+        const active = document.querySelector('nav.tabs button.active')?.dataset?.tab;
+        if (!active || active === 'feed') return;
+        (TABS[active] || (() => {}))();
+      }, 12_000);
+      ensureFeed();
+      setInterval(renderPulse, 8000);
+    }
+    boot();
   </script>
 </body>
 </html>`
