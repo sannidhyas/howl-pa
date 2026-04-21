@@ -25,6 +25,8 @@ Commands:
   council         Bounce a prompt across the local Ollama council
   daemon          Manage the howl-pa systemd --user service (install|uninstall|status|logs)
   set-password    Add or update the dashboard password
+  backup          Back up credentials (.env + google-token.json) to a tgz archive
+  reset           Wipe local config and credentials (interactive confirm)
   version         Print version and exit
 
 Env: set HOWL_CONFIG or CLAUDECLAW_CONFIG to override the config dir.
@@ -84,6 +86,12 @@ switch (cmd) {
     break
   case 'set-password':
     runNode('scripts/set-password.js', args)
+    break
+  case 'backup':
+    runNode('scripts/backup.js', args)
+    break
+  case 'reset':
+    runNode('scripts/reset.js', args)
     break
   case 'version':
   case '--version':

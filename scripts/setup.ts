@@ -281,6 +281,8 @@ async function main(): Promise<void> {
   console.log(`│ Dashboard:    http://${existing.DASHBOARD_HOST}:${existing.DASHBOARD_PORT}/?token=${existing.DASHBOARD_TOKEN}`)
   console.log(`│ Host:         ${existing.DASHBOARD_HOST}:${existing.DASHBOARD_PORT}`)
   console.log(`│ Username:     ${existing.DASHBOARD_USERNAME}`)
+  console.log('│ Backup creds: howl-pa backup')
+  console.log('│ Reset local:  howl-pa reset')
   console.log('└─────────────────────────────────────────────────────┘')
 }
 
