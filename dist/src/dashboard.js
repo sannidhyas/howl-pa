@@ -218,6 +218,7 @@ function loginHtml() {
   h1{margin:0 0 4px 0;font-size:14px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#edf0f6;display:flex;align-items:center;gap:10px}
   h1 .logo{color:#7cc5ff;display:inline-flex}
   p.sub{color:#a1a7b5;margin:0 0 18px 0;font-size:13px}
+  p.sub code{background:#21252f;color:#7cc5ff;padding:1px 6px;border-radius:3px;font-family:ui-monospace,"JetBrains Mono",monospace;font-size:11.5px}
   .divider{border:none;border-top:1px solid #272b36;margin:20px 0}
   label{display:block;color:#a1a7b5;font-size:11px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;margin-top:10px}
   input{width:100%;background:#0b0c10;color:#edf0f6;border:1px solid #272b36;border-radius:6px;padding:9px 11px;font:inherit;font-family:ui-monospace,"JetBrains Mono",SFMono-Regular,monospace;font-size:13px;box-sizing:border-box}
@@ -230,7 +231,7 @@ function loginHtml() {
 </style></head>
 <body><div class="wrap"><div class="card">
   <h1><span class="logo">${svgMark(22)}</span>Howl PA</h1>
-  <p class="sub">Dashboard access required.</p>
+  <p class="sub">${hasPassword ? 'Sign in with your dashboard password.' : 'No dashboard password set yet. Use a token or run <code>howl-pa set-password</code> to add one.'}</p>
   ${hasPassword ? `
   <form id="pwform">
     <label for="u">Username</label>

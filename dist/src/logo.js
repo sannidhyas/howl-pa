@@ -27,24 +27,27 @@ export function textBanner() {
 export function textOneLine() {
     return `${BOLD}${FG}Howl PA${RESET} ${VIOLET}· personal mission control${RESET}`;
 }
-// Inline SVG wolf mark for HTML. Stroke-only silhouette, inherits
-// `currentColor` so it sits on whatever background it's dropped onto.
+// Inline SVG wolf mark for HTML. Geometric wolf head in profile — tall
+// pointed ears, angular face, pointed snout. Two eye dots. Inherits
+// `currentColor` so it tints with the header state.
 export function svgMark(size = 22) {
     const s = String(size);
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="${s}" height="${s}" aria-hidden="true" focusable="false">
-<g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round">
-<path d="M10 22 L16 10 L22 20 L32 14 L42 20 L48 10 L54 22 L56 38 C56 48 48 56 38 56 L26 56 C16 56 8 48 8 38 Z" />
-<path d="M22 32 Q24 30 26 32" />
-<path d="M38 32 Q40 30 42 32" />
-<path d="M28 44 Q32 47 36 44" />
-<path d="M32 36 L30 40 L34 40 Z" fill="currentColor" />
+<g fill="currentColor">
+<path d="M8 6 L22 30 L30 22 Z" />
+<path d="M56 6 L42 30 L34 22 Z" />
+<path d="M20 22 L16 30 L24 44 L32 56 L40 44 L48 30 L44 22 L38 28 L32 32 L26 28 Z" />
+</g>
+<g fill="#0b0c10">
+<circle cx="26" cy="32" r="1.8" />
+<circle cx="38" cy="32" r="1.8" />
 </g>
 </svg>`;
 }
-// Favicon: compact URL-encoded SVG. Use a solid dark circle with the mark
-// on top, sized for 32px. Works in every modern browser.
+// Favicon: compact URL-encoded SVG matching the mark above on a dark
+// rounded-square. Keep it tight; browsers cache at 32px.
 export function svgFavicon() {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="%230b0c10"/><g fill="none" stroke="%237cc5ff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"><path d="M10 22 L16 10 L22 20 L32 14 L42 20 L48 10 L54 22 L56 38 C56 48 48 56 38 56 L26 56 C16 56 8 48 8 38 Z"/><path d="M22 32 Q24 30 26 32"/><path d="M38 32 Q40 30 42 32"/><path d="M28 44 Q32 47 36 44"/><path d="M32 36 L30 40 L34 40 Z" fill="%237cc5ff"/></g></svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="%230b0c10"/><g fill="%237cc5ff"><path d="M8 6 L22 30 L30 22 Z"/><path d="M56 6 L42 30 L34 22 Z"/><path d="M20 22 L16 30 L24 44 L32 56 L40 44 L48 30 L44 22 L38 28 L32 32 L26 28 Z"/></g><g fill="%230b0c10"><circle cx="26" cy="32" r="1.8"/><circle cx="38" cy="32" r="1.8"/></g></svg>`;
     return 'data:image/svg+xml,' + svg;
 }
 //# sourceMappingURL=logo.js.map
