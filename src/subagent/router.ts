@@ -8,6 +8,67 @@ import { runCouncil } from './aggregator.js'
 
 const DESIGN_HINTS = new Set(['ui', 'ux', 'design', 'visual', 'layout', 'css', 'mockup'])
 
+// codex-corps-aligned role taxonomy. Every dispatch resolves to one of these
+// roles so the routing table, dashboard, and telemetry share a vocabulary.
+// Priority order matches specificity (first match wins).
+export type SubagentRole =
+  | 'frontend-logic'
+  | 'debugger'
+  | 'refactor'
+  | 'tests'
+  | 'reviewer'
+  | 'security'
+  | 'data'
+  | 'infra'
+  | 'research'
+  | 'docs'
+  | 'arch'
+  | 'perf'
+  | 'migrate'
+  | 'integrate'
+  | 'prompt'
+  | 'route'
+  | 'oneshot'
+  | 'backend'
+  | 'frontend-visual'
+  | 'do'
+
+type RoleRule = { role: SubagentRole; hints?: string[]; keywords?: RegExp }
+
+// Ordered — evaluate top to bottom, first match wins. Frontend-visual sits
+// above backend so design hints route to Claude via pickSingleBackend.
+const ROLE_RULES: RoleRule[] = [
+  { role: 'frontend-visual', hints: ['ui', 'ux', 'design', 'visual', 'layout', 'css', 'mockup', 'animation', 'typography', 'brand'] },
+  { role: 'debugger', hints: ['debug', 'bug', 'root-cause', 'stack-trace'], keywords: /\b(debug|bugfix|stack trace|root cause|exception|crash)\b/i },
+  { role: 'refactor', hints: ['refactor', 'restructure', 'rename'], keywords: /\b(refactor|restructure|rename|clean up)\b/i },
+  { role: 'tests', hints: ['test', 'tests', 'testing', 'unit-test', 'e2e'], keywords: /\b(unit test|e2e test|jest|vitest|pytest|test coverage)\b/i },
+  { role: 'reviewer', hints: ['review', 'code-review', 'pr-review'], keywords: /\b(code review|pr review|review this)\b/i },
+  { role: 'security', hints: ['security', 'vuln', 'audit', 'harden'], keywords: /\b(vulnerabilit|security audit|sql injection|xss|csrf|cve)\b/i },
+  { role: 'data', hints: ['sql', 'etl', 'migration', 'ml', 'pipeline', 'query'], keywords: /\b(sql|etl|migration|dataset|dataframe)\b/i },
+  { role: 'infra', hints: ['docker', 'ci', 'cd', 'k8s', 'terraform', 'iac', 'deploy'], keywords: /\b(dockerfile|kubernetes|terraform|github actions|ci\/cd|deploy)\b/i },
+  { role: 'research', hints: ['research', 'explore', 'library', 'survey'], keywords: /\b(research|survey|compare libraries|explore)\b/i },
+  { role: 'docs', hints: ['docs', 'documentation', 'readme', 'api-ref'], keywords: /\b(readme|documentation|api reference|docstring)\b/i },
+  { role: 'arch', hints: ['arch', 'architecture', 'design-doc'], keywords: /\b(architecture|design doc|system design)\b/i },
+  { role: 'perf', hints: ['perf', 'performance', 'profile', 'optimize'], keywords: /\b(perform|optimi[sz]e|benchmark|profiling)\b/i },
+  { role: 'migrate', hints: ['migrate', 'upgrade', 'port'], keywords: /\b(migrate|upgrade from|port to|v\d+ to v\d+)\b/i },
+  { role: 'integrate', hints: ['integrate', 'integration', 'sdk', 'api-client', 'webhook'], keywords: /\b(integrate|webhook|third-party|sdk|api client)\b/i },
+  { role: 'prompt', hints: ['prompt', 'prompt-engineer'], keywords: /\b(prompt engineer|system prompt)\b/i },
+  { role: 'route', hints: ['route', 'dispatch'] },
+  { role: 'oneshot', hints: ['oneshot', 'one-shot'] },
+  { role: 'frontend-logic', hints: ['frontend-logic', 'state', 'hooks', 'data-flow'], keywords: /\b(react state|hook|redux|zustand|signals?)\b/i },
+  { role: 'backend', hints: ['backend', 'api', 'service', 'endpoint'], keywords: /\b(endpoint|api route|service layer|business logic)\b/i },
+]
+
+export function inferRole(input: SubagentInput): SubagentRole {
+  const hints = new Set((input.hints ?? []).map(h => h.toLowerCase()))
+  const prompt = input.prompt
+  for (const rule of ROLE_RULES) {
+    if (rule.hints && rule.hints.some(h => hints.has(h))) return rule.role
+    if (rule.keywords && rule.keywords.test(prompt)) return rule.role
+  }
+  return 'do'
+}
+
 const claude = new ClaudeBackend()
 const codex = new CodexBackend()
 
@@ -39,6 +100,7 @@ export type DispatchOptions = {
 export type DispatchOutcome = {
   final: string
   mode: RunMode
+  role?: SubagentRole
   backendsUsed: string[]
   winner?: string
   members: SubagentResult[]
@@ -110,6 +172,7 @@ export async function dispatchSubagent(
 ): Promise<DispatchOutcome> {
   const start = Date.now()
   const mode = detectMode(input, opts)
+  const role = inferRole(input)
   const promptPreview = input.prompt.slice(0, 240)
 
   if (mode === 'single') {
@@ -124,6 +187,7 @@ export async function dispatchSubagent(
       chatId: input.chatId,
       mode,
       backend: backend.name,
+      role,
       hints: (input.hints ?? []).join(','),
       promptPreview,
       durationMs: result.durationMs,
@@ -135,6 +199,7 @@ export async function dispatchSubagent(
     return {
       final: result.error ? `⚠️ ${backend.name}: ${result.error}` : result.text,
       mode,
+      role,
       backendsUsed: [backend.name],
       winner: backend.name,
       members: [result],
@@ -147,7 +212,7 @@ export async function dispatchSubagent(
   const judge = resolveJudge(opts)
   const aggregator = defaultAggregator(input, opts)
 
-  logger.info({ aggregator, members: members.map(m => m.name), judge: judge.name }, 'council dispatch')
+  logger.info({ aggregator, role, members: members.map(m => m.name), judge: judge.name }, 'council dispatch')
 
   const outcome = await runCouncil({ input, members, aggregator, judge })
 
@@ -157,6 +222,7 @@ export async function dispatchSubagent(
     chatId: input.chatId,
     mode,
     backend: backendsUsed.join('|'),
+    role,
     judge: judge.name,
     hints: (input.hints ?? []).join(','),
     promptPreview,
@@ -167,6 +233,7 @@ export async function dispatchSubagent(
   return {
     final: outcome.final,
     mode,
+    role,
     backendsUsed,
     winner: outcome.winner,
     members: outcome.members,

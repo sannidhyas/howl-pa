@@ -61,6 +61,7 @@ export function dashboardHtml(token: string): string {
     <button data-tab="missions">Missions</button>
     <button data-tab="memories">Memories</button>
     <button data-tab="subagents">Subagents</button>
+    <button data-tab="roles">Routing</button>
     <button data-tab="audit">Audit</button>
     <button data-tab="live">Live</button>
   </nav>
@@ -85,6 +86,10 @@ export function dashboardHtml(token: string): string {
     <section id="subagents">
       <div class="hint">Per-run telemetry for Claude / Codex / Ollama dispatches.</div>
       <table id="subagent-table"></table>
+    </section>
+    <section id="roles">
+      <div class="hint">Routing by inferred role (codex-corps taxonomy). Rolling 7-day window.</div>
+      <table id="role-table"></table>
     </section>
     <section id="audit">
       <div class="hint">All events written to the audit log.</div>
@@ -169,9 +174,21 @@ export function dashboardHtml(token: string): string {
     async function loadSubagents(){
       const { rows } = await j('/api/subagents');
       document.getElementById('subagent-table').innerHTML = tableHtml(
-        ['When','Mode','Backend','Judge','Dur','Out','Outcome','Preview'],
+        ['When','Mode','Role','Backend','Judge','Dur','Out','Outcome','Preview'],
         rows,
-        r => '<tr><td class="mono">'+fmtRel(r.created_at)+'</td><td>'+r.mode+'</td><td class="mono">'+r.backend+'</td><td class="mono">'+(r.judge||'—')+'</td><td class="right">'+(r.duration_ms||0)+'ms</td><td class="right">'+(r.output_tokens||'—')+'</td><td>'+pill(r.outcome)+'</td><td class="truncate">'+(r.prompt_preview||'')+'</td></tr>'
+        r => '<tr><td class="mono">'+fmtRel(r.created_at)+'</td><td>'+r.mode+'</td><td class="mono">'+(r.role||'—')+'</td><td class="mono">'+r.backend+'</td><td class="mono">'+(r.judge||'—')+'</td><td class="right">'+(r.duration_ms||0)+'ms</td><td class="right">'+(r.output_tokens||'—')+'</td><td>'+pill(r.outcome)+'</td><td class="truncate">'+(r.prompt_preview||'')+'</td></tr>'
+      );
+    }
+    async function loadRoles(){
+      const { rows, hours } = await j('/api/roles?hours=168');
+      document.getElementById('role-table').innerHTML = tableHtml(
+        ['Role','Runs','OK','Err','OK %','Avg ms'],
+        rows,
+        r => {
+          const pct = r.n > 0 ? Math.round((r.ok / r.n) * 100) : 0;
+          const avg = r.avg_ms != null ? Math.round(r.avg_ms) : '—';
+          return '<tr><td class="mono">'+r.role+'</td><td class="right">'+r.n+'</td><td class="right ok">'+r.ok+'</td><td class="right bad">'+r.err+'</td><td class="right">'+pct+'%</td><td class="right mono">'+avg+'</td></tr>';
+        }
       );
     }
     async function loadAudit(){
@@ -203,6 +220,7 @@ export function dashboardHtml(token: string): string {
       missions: loadMissions,
       memories: loadMemory,
       subagents: loadSubagents,
+      roles: loadRoles,
       audit: loadAudit,
       live: startLive,
     };

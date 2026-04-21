@@ -274,6 +274,12 @@ function applySchema(db: DatabaseSync): void {
   if (!taskCols.includes('importance')) db.exec(`ALTER TABLE tasks_items ADD COLUMN importance INTEGER`)
   if (!taskCols.includes('importance_reason'))
     db.exec(`ALTER TABLE tasks_items ADD COLUMN importance_reason TEXT`)
+
+  const sarCols = (
+    db.prepare(`PRAGMA table_info(subagent_runs)`).all() as Array<{ name: string }>
+  ).map(r => r.name)
+  if (!sarCols.includes('role')) db.exec(`ALTER TABLE subagent_runs ADD COLUMN role TEXT`)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_sar_role ON subagent_runs(role, created_at DESC)`)
 }
 
 export function getMirrorState(sourcePath: string): { mtime: number; vault_path: string } | null {
@@ -502,6 +508,7 @@ export type SubagentRunEntry = {
   chatId?: string
   mode: 'single' | 'council'
   backend: string
+  role?: string
   judge?: string
   hints?: string
   promptPreview?: string
@@ -515,13 +522,14 @@ export type SubagentRunEntry = {
 export function recordSubagentRun(entry: SubagentRunEntry): void {
   getDb()
     .prepare(
-      `INSERT INTO subagent_runs (chat_id, mode, backend, judge, hints, prompt_preview, duration_ms, input_tokens, output_tokens, cost_usd, outcome)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO subagent_runs (chat_id, mode, backend, role, judge, hints, prompt_preview, duration_ms, input_tokens, output_tokens, cost_usd, outcome)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       entry.chatId ?? null,
       entry.mode,
       entry.backend,
+      entry.role ?? null,
       entry.judge ?? null,
       entry.hints ?? null,
       entry.promptPreview ?? null,
@@ -531,6 +539,30 @@ export function recordSubagentRun(entry: SubagentRunEntry): void {
       entry.costUsd ?? null,
       entry.outcome
     )
+}
+
+export type RoleStatRow = {
+  role: string
+  n: number
+  ok: number
+  err: number
+  avg_ms: number | null
+}
+
+export function roleStats(sinceMs: number): RoleStatRow[] {
+  return getDb()
+    .prepare(
+      `SELECT COALESCE(role, 'unknown') AS role,
+              COUNT(*) AS n,
+              SUM(CASE WHEN outcome = 'ok' THEN 1 ELSE 0 END) AS ok,
+              SUM(CASE WHEN outcome IN ('error','timeout') THEN 1 ELSE 0 END) AS err,
+              AVG(duration_ms) AS avg_ms
+         FROM subagent_runs
+         WHERE created_at >= ?
+         GROUP BY COALESCE(role, 'unknown')
+         ORDER BY n DESC`
+    )
+    .all(sinceMs) as RoleStatRow[]
 }
 
 // Scheduled tasks --------------------------------------------------------

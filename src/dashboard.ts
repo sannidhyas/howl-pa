@@ -142,8 +142,29 @@ function buildApp(): Hono {
     if (gate) return gate
     return c.json({
       rows: rows(
-        `SELECT mode, backend, judge, hints, prompt_preview, duration_ms, input_tokens, output_tokens, cost_usd, outcome, created_at
+        `SELECT mode, backend, role, judge, hints, prompt_preview, duration_ms, input_tokens, output_tokens, cost_usd, outcome, created_at
          FROM subagent_runs ORDER BY created_at DESC LIMIT 50`
+      ),
+    })
+  })
+
+  app.get('/api/roles', c => {
+    const gate = requireToken(c)
+    if (gate) return gate
+    const windowHours = Number.parseInt(c.req.query('hours') ?? '168', 10) || 168
+    const since = Date.now() - windowHours * 3600 * 1000
+    return c.json({
+      since,
+      hours: windowHours,
+      rows: rows(
+        `SELECT COALESCE(role, 'unknown') AS role,
+                COUNT(*) AS n,
+                SUM(CASE WHEN outcome = 'ok' THEN 1 ELSE 0 END) AS ok,
+                SUM(CASE WHEN outcome IN ('error','timeout') THEN 1 ELSE 0 END) AS err,
+                AVG(duration_ms) AS avg_ms
+           FROM subagent_runs WHERE created_at >= ?
+           GROUP BY COALESCE(role, 'unknown') ORDER BY n DESC`,
+        since
       ),
     })
   })
