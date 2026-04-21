@@ -1,10 +1,9 @@
 import { InlineKeyboard } from 'grammy'
 
 export function buildWelcomeHtml(): string {
-  return `🐺 <b>Howl PA</b>
-<!-- TODO(slice 5): replace with logo.textBanner() -->
+  return `🐺 <b>Howl PA</b> — <i>personal mission control</i>
 
-Your personal Mission Control — I maintain your Obsidian vault, ingest
+Your Obsidian vault, Gmail / Calendar / Tasks, and a subagent pool, all behind one chat. I maintain the vault, ingest
 Gmail / Calendar / Tasks, and spawn Claude or Codex subagents when you ask.
 
 <b>Next steps</b>

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { ALLOWED_CHAT_ID, IS_DEV, LOCK_PATH, PROJECT_ROOT, SECURITY_ENABLED, STORE_DIR, } from './config.js';
+import { ALLOWED_CHAT_ID, LOCK_PATH, PROJECT_ROOT, SECURITY_ENABLED, STORE_DIR, } from './config.js';
 import { logger } from './logger.js';
 import { createBot } from './bot.js';
 import { closeDatabase, initDatabase } from './db.js';
@@ -9,11 +9,7 @@ import { initScheduler, stopScheduler } from './scheduler.js';
 import { startDashboard, stopDashboard } from './dashboard.js';
 import { ensureHiveMindSchema } from './orchestrator.js';
 import { startAllSpecialistBots } from './agent-bot.js';
-const BANNER = `
-┓ ┏      ┓ ┃┓    ┏┓┏┓
-┣━┫┏┓┓┏┏┃ ┃┃━━  ┃┃┣━┫
-┛ ┛┗┛┗┻┛┗┛┗┛┛   ┣━┻━┛
-`;
+import { textBanner, textOneLine } from './logo.js';
 function acquireLock() {
     mkdirSync(dirname(LOCK_PATH), { recursive: true });
     if (existsSync(LOCK_PATH)) {
@@ -43,8 +39,11 @@ function releaseLock() {
     }
 }
 async function main() {
-    if (IS_DEV)
-        process.stderr.write(BANNER);
+    // Always print the banner — it's the one-shot visual signal the daemon
+    // is up. Terminals without ANSI colour see ASCII silhouette, coloured
+    // terminals get the tinted version.
+    process.stderr.write(textBanner());
+    process.stderr.write('  ' + textOneLine() + '\n\n');
     logger.info({ root: PROJECT_ROOT, store: STORE_DIR }, 'howl-pa starting');
     acquireLock();
     initDatabase();

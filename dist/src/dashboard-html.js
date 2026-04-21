@@ -1,3 +1,4 @@
+import { svgMark, svgFavicon } from './logo.js';
 export function dashboardHtml(token) {
     return `<!doctype html>
 <html lang="en">
@@ -5,6 +6,8 @@ export function dashboardHtml(token) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Howl PA</title>
+  <link rel="icon" href="${svgFavicon()}" />
+  <meta name="theme-color" content="#0b0c10" />
   <style>
     :root {
       --bg: #0b0c10;
@@ -64,18 +67,25 @@ export function dashboardHtml(token) {
       display: flex;
       align-items: center;
       gap: 10px;
+      color: var(--fg);
     }
-    header.top h1::before {
-      content: '';
-      width: 8px;
-      height: 8px;
+    header.top h1 .logo {
+      color: var(--accent);
+      display: inline-flex;
+      transition: color .25s var(--ease);
+    }
+    header.top h1 .status-dot {
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       background: var(--ok);
       box-shadow: 0 0 0 4px rgba(111,209,154,.15);
       animation: pulse 2s infinite;
     }
-    body.offline header.top h1::before { background: var(--danger); box-shadow: 0 0 0 4px rgba(240,138,122,.2); }
-    body.degraded header.top h1::before { background: var(--warn); box-shadow: 0 0 0 4px rgba(233,181,107,.2); }
+    body.offline header.top h1 .logo { color: var(--danger); }
+    body.offline header.top h1 .status-dot { background: var(--danger); box-shadow: 0 0 0 4px rgba(240,138,122,.2); }
+    body.degraded header.top h1 .logo { color: var(--warn); }
+    body.degraded header.top h1 .status-dot { background: var(--warn); box-shadow: 0 0 0 4px rgba(233,181,107,.2); }
     @keyframes pulse {
       0%, 100% { opacity: 1; }
       50% { opacity: .55; }
@@ -924,7 +934,7 @@ export function dashboardHtml(token) {
 <body>
   <div class="app">
     <header class="top">
-      <h1>Howl PA</h1>
+      <h1><span class="logo">${svgMark(22)}</span>Howl PA<span class="status-dot"></span></h1>
       <div class="heartbeat" id="heartbeat">connecting…</div>
       <div class="spacer"></div>
       <div class="search">
@@ -947,6 +957,7 @@ export function dashboardHtml(token) {
       <button data-tab="memory">Memory</button>
       <button data-tab="capture">Capture</button>
       <button data-tab="subagents">Subagents</button>
+      <button data-tab="usage">Usage</button>
       <button data-tab="audit">Audit</button>
     </nav>
 
@@ -1063,6 +1074,15 @@ export function dashboardHtml(token) {
           </div>
           <div id="capture-result" style="margin-top:14px"></div>
         </div>
+      </section>
+
+      <section id="usage" class="panel">
+        <div class="toolbar">
+          <h2 class="section-title" style="margin:0">Claude + Codex usage</h2>
+          <div class="grow"></div>
+          <button class="btn ghost" id="usage-refresh">↻ Refresh</button>
+        </div>
+        <div id="usage-wrap"></div>
       </section>
 
       <section id="audit" class="panel">
@@ -1678,6 +1698,38 @@ export function dashboardHtml(token) {
       } catch { /* quiet */ }
     }
 
+    // ───── usage ─────
+    async function loadUsage(){
+      const wrap = document.getElementById('usage-wrap');
+      wrap.innerHTML = '<div class="skeleton" style="height:120px"></div>';
+      try {
+        const r = await getJson('/api/usage?window_hours=168');
+        wrap.innerHTML = renderUsage(r);
+      } catch (e) {
+        wrap.innerHTML = '<div class="empty"><div class="icon">⚠</div><div class="msg">' + escapeHtml(e.message) + '</div></div>';
+      }
+    }
+    function renderUsage(r){
+      const c = r.claude || {};
+      const x = r.codex || {};
+      const claudeCard = c.available
+        ? '<div class="card"><h3 style="margin:0 0 8px 0;font-size:12px;color:var(--fg-muted);text-transform:uppercase;letter-spacing:.08em">Claude Code (last ' + escapeHtml(String(r.window_hours)) + 'h)</h3>' +
+          '<div class="grid" style="grid-template-columns:repeat(3, 1fr);gap:10px;margin:0">' +
+            '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em">Prompts</div><div class="num" style="font-size:22px;margin-top:2px">' + escapeHtml(String(c.total_prompts ?? '—')) + '</div></div>' +
+            '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em">Sessions</div><div class="num" style="font-size:22px;margin-top:2px">' + escapeHtml(String(c.total_sessions ?? '—')) + '</div></div>' +
+            '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em">Hours</div><div class="num" style="font-size:22px;margin-top:2px">' + escapeHtml((c.total_hours ?? 0).toFixed ? c.total_hours.toFixed(1) : String(c.total_hours ?? '—')) + '</div></div>' +
+          '</div>' +
+          (c.users?.length ? '<div class="muted" style="font-size:11.5px;margin-top:10px">users: ' + c.users.map(u => '<code>' + escapeHtml(u) + '</code>').join(' ') + '</div>' : '') +
+          (c.note ? '<div class="muted" style="font-size:11.5px;margin-top:6px;font-style:italic">' + escapeHtml(c.note) + '</div>' : '') +
+          '</div>'
+        : '<div class="empty"><div class="icon">○</div><div class="msg">Claude usage tracker not configured</div><div class="hint">' + escapeHtml(c.reason || 'run /usage-install in Claude Code') + '</div></div>';
+      const codexCard = x.available
+        ? '<div class="card"><h3 style="margin:0 0 8px 0;font-size:12px;color:var(--fg-muted);text-transform:uppercase;letter-spacing:.08em">Codex CLI</h3><div>' + escapeHtml(JSON.stringify(x)) + '</div></div>'
+        : '<div class="empty" style="margin-top:12px"><div class="icon">◌</div><div class="msg">Codex usage not available</div><div class="hint">' + escapeHtml(x.reason || 'Codex does not write local usage logs') + '</div></div>';
+      return claudeCard + codexCard;
+    }
+    document.getElementById('usage-refresh').addEventListener('click', loadUsage);
+
     // ───── audit ─────
     async function loadAudit(){
       const wrap = document.getElementById('audit-wrap');
@@ -1727,6 +1779,7 @@ export function dashboardHtml(token) {
       calendar: loadCalendar,
       memory: loadMemory,
       subagents: loadSubagents,
+      usage: loadUsage,
       audit: loadAudit,
       capture: async () => { if (!captureKinds.length) await loadCaptureKinds(); },
     };

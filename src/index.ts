@@ -16,12 +16,7 @@ import { initScheduler, stopScheduler } from './scheduler.js'
 import { startDashboard, stopDashboard } from './dashboard.js'
 import { ensureHiveMindSchema } from './orchestrator.js'
 import { startAllSpecialistBots, type AgentBotHandle } from './agent-bot.js'
-
-const BANNER = `
-┓ ┏      ┓ ┃┓    ┏┓┏┓
-┣━┫┏┓┓┏┏┃ ┃┃━━  ┃┃┣━┫
-┛ ┛┗┛┗┻┛┗┛┗┛┛   ┣━┻━┛
-`
+import { textBanner, textOneLine } from './logo.js'
 
 function acquireLock(): void {
   mkdirSync(dirname(LOCK_PATH), { recursive: true })
@@ -52,7 +47,11 @@ function releaseLock(): void {
 }
 
 async function main(): Promise<void> {
-  if (IS_DEV) process.stderr.write(BANNER)
+  // Always print the banner — it's the one-shot visual signal the daemon
+  // is up. Terminals without ANSI colour see ASCII silhouette, coloured
+  // terminals get the tinted version.
+  process.stderr.write(textBanner())
+  process.stderr.write('  ' + textOneLine() + '\n\n')
   logger.info({ root: PROJECT_ROOT, store: STORE_DIR }, 'howl-pa starting')
 
   acquireLock()

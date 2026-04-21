@@ -13,6 +13,7 @@ import { BUILT_INS, nextRunFor } from './scheduler.js';
 import { routeCapture } from './capture-router.js';
 import { chatEvents } from './state.js';
 import { dashboardHtml } from './dashboard-html.js';
+import { svgMark, svgFavicon } from './logo.js';
 import { registerUsageRoute } from './usage.js';
 const DEFAULT_PORT = Number.parseInt(process.env.DASHBOARD_PORT ?? '3141', 10);
 const SESSION_COOKIE = 'hpa_session';
@@ -208,12 +209,14 @@ function loginHtml() {
 <html lang="en"><head>
 <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Howl PA — sign in</title>
+<link rel="icon" href="${svgFavicon()}" />
+<meta name="theme-color" content="#0b0c10" />
 <style>
   html,body{height:100%;margin:0;background:#0b0c10;color:#edf0f6;font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
   .wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px}
   .card{background:#13151b;border:1px solid #272b36;border-radius:12px;padding:28px 30px;max-width:420px;width:100%;box-shadow:0 8px 24px rgba(0,0,0,.4)}
   h1{margin:0 0 4px 0;font-size:14px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#edf0f6;display:flex;align-items:center;gap:10px}
-  h1::before{content:'';width:8px;height:8px;border-radius:50%;background:#6fd19a;box-shadow:0 0 0 4px rgba(111,209,154,.15)}
+  h1 .logo{color:#7cc5ff;display:inline-flex}
   p.sub{color:#a1a7b5;margin:0 0 18px 0;font-size:13px}
   .divider{border:none;border-top:1px solid #272b36;margin:20px 0}
   label{display:block;color:#a1a7b5;font-size:11px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;margin-top:10px}
@@ -226,7 +229,7 @@ function loginHtml() {
   .err{color:#f08a7a;font-size:12px;margin-top:8px}
 </style></head>
 <body><div class="wrap"><div class="card">
-  <h1>Howl PA</h1>
+  <h1><span class="logo">${svgMark(22)}</span>Howl PA</h1>
   <p class="sub">Dashboard access required.</p>
   ${hasPassword ? `
   <form id="pwform">
