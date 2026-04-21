@@ -476,6 +476,37 @@ export function setTaskStatus(name, status) {
     const info = getDb().prepare(`UPDATE scheduled_tasks SET status = ? WHERE name = ?`).run(status, name);
     return info.changes > 0;
 }
+export function updateScheduledFields(name, patch) {
+    const sets = [];
+    const values = [];
+    if (patch.schedule !== undefined) {
+        sets.push('schedule = ?');
+        values.push(patch.schedule);
+    }
+    if (patch.nextRun !== undefined) {
+        sets.push('next_run = ?');
+        values.push(patch.nextRun);
+    }
+    if (patch.priority !== undefined) {
+        sets.push('priority = ?');
+        values.push(patch.priority);
+    }
+    if (patch.args !== undefined) {
+        sets.push('args = ?');
+        values.push(patch.args);
+    }
+    if (patch.status !== undefined) {
+        sets.push('status = ?');
+        values.push(patch.status);
+    }
+    if (sets.length === 0)
+        return false;
+    values.push(name);
+    const info = getDb()
+        .prepare(`UPDATE scheduled_tasks SET ${sets.join(', ')} WHERE name = ?`)
+        .run(...values);
+    return info.changes > 0;
+}
 export function deleteScheduledTask(name) {
     const info = getDb().prepare(`DELETE FROM scheduled_tasks WHERE name = ?`).run(name);
     return info.changes > 0;

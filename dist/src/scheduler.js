@@ -29,7 +29,7 @@ export const BUILT_INS = [
     { name: 'tasks-poll', mission: 'tasks-poll', schedule: '*/5 * * * *', description: 'Pulls Google Tasks from the API and upserts them into the local DB', priority: 2 },
     { name: 'tasks-push', mission: 'tasks-push', schedule: '*/5 * * * *', description: 'Pushes locally-captured tasks back to Google Tasks via the API', priority: 3 },
 ];
-function nextRunFor(schedule, from = new Date()) {
+export function nextRunFor(schedule, from = new Date()) {
     return parseExpression(schedule, { currentDate: from }).next().getTime();
 }
 function registerBuiltIns() {

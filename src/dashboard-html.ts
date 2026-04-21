@@ -787,10 +787,137 @@ export function dashboardHtml(token: string): string {
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
 
-    @media (max-width: 680px) {
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(11,12,16,.72);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 95;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    .modal-overlay.open { display: flex; animation: fadeIn .15s var(--ease); }
+    .modal {
+      background: var(--bg-1);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      padding: 22px 24px;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: var(--shadow-md);
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+    }
+    .modal h2 {
+      margin: 0 0 4px 0;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: .04em;
+      color: var(--fg);
+    }
+    .modal .sub {
+      color: var(--fg-muted);
+      font-size: 12.5px;
+      margin-bottom: 16px;
+    }
+    .field {
+      margin-top: 12px;
+    }
+    .field label {
+      display: block;
+      color: var(--fg-dim);
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin-bottom: 5px;
+    }
+    .field input, .field textarea, .field select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--fg);
+      border-radius: 5px;
+      padding: 8px 10px;
+      font: inherit;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      box-sizing: border-box;
+      transition: border-color .12s var(--ease);
+    }
+    .field input:focus, .field textarea:focus, .field select:focus {
+      outline: none;
+      border-color: var(--accent-dim);
+    }
+    .field textarea { min-height: 110px; resize: vertical; font-family: var(--mono); }
+    .field .help {
+      margin-top: 4px;
+      font-size: 11.5px;
+      color: var(--fg-dim);
+    }
+    .field .err { display: none; color: var(--danger); font-size: 11.5px; margin-top: 4px; }
+    .field.error .err { display: block; }
+    .field.error input, .field.error textarea, .field.error select { border-color: var(--danger); }
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 22px;
+      justify-content: flex-end;
+    }
+
+    /* Capture */
+    .capture-kinds {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .kind-btn {
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      color: var(--fg-muted);
+      border-radius: 6px;
+      padding: 10px 6px;
+      font: inherit;
+      font-size: 11.5px;
+      cursor: pointer;
+      text-align: center;
+      transition: all .12s var(--ease);
+    }
+    .kind-btn:hover { color: var(--fg); border-color: var(--border-strong); }
+    .kind-btn.active {
+      background: var(--bg-3);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .kind-btn .emoji { font-size: 16px; display: block; margin-bottom: 3px; }
+
+    /* Mobile polish */
+    @media (max-width: 720px) {
+      header.top { padding: 10px 14px; gap: 8px; }
       header.top .search { display: none; }
+      header.top .heartbeat { font-size: 11px; }
+      nav.tabs { padding: 0 10px; }
+      nav.tabs button { padding: 9px 10px; font-size: 12.5px; }
       .pulse-cell { min-width: 110px; padding: 8px 12px; }
-      main { padding: 14px; }
+      .pulse-cell .value { font-size: 15px; }
+      main { padding: 12px; }
+      .card-grid { grid-template-columns: 1fr; }
+      .board { grid-template-columns: 1fr; }
+      table { font-size: 11.5px; }
+      thead th { padding: 7px 8px; }
+      tbody td { padding: 7px 8px; }
+      .truncate { max-width: 180px; }
+      .drawer { width: 100vw; }
+      .modal { padding: 18px; }
+      .toolbar { gap: 6px; }
+    }
+    @media (max-width: 480px) {
+      header.top h1 { font-size: 12px; }
+      nav.tabs button .count { display: none; }
     }
   </style>
 </head>
@@ -805,6 +932,7 @@ export function dashboardHtml(token: string): string {
         <kbd>/</kbd>
       </div>
       <button class="btn ghost" id="help-btn" title="Keyboard shortcuts (?)">?</button>
+      <button class="btn ghost" id="logout-btn" title="Sign out">⎋</button>
     </header>
 
     <div class="pulse" id="pulse"></div>
@@ -817,6 +945,7 @@ export function dashboardHtml(token: string): string {
       <button data-tab="inbox">Inbox <span class="count" id="count-inbox">·</span></button>
       <button data-tab="calendar">Calendar <span class="count" id="count-calendar">·</span></button>
       <button data-tab="memory">Memory</button>
+      <button data-tab="capture">Capture</button>
       <button data-tab="subagents">Subagents</button>
       <button data-tab="audit">Audit</button>
     </nav>
@@ -837,6 +966,7 @@ export function dashboardHtml(token: string): string {
             <button data-f="custom">Custom</button>
           </div>
           <div class="grow"></div>
+          <button class="btn primary" id="routines-new">+ New routine</button>
           <button class="btn ghost" id="routines-refresh">↻ Refresh</button>
         </div>
         <div class="card-grid" id="routines-grid"></div>
@@ -846,6 +976,7 @@ export function dashboardHtml(token: string): string {
         <div class="toolbar">
           <h2 class="section-title" style="margin:0">Mission queue</h2>
           <div class="grow"></div>
+          <button class="btn primary" id="missions-adhoc">▶ Run ad-hoc</button>
           <button class="btn ghost" id="missions-refresh">↻ Refresh</button>
         </div>
         <div class="board">
@@ -910,11 +1041,47 @@ export function dashboardHtml(token: string): string {
         <div id="roles-wrap"></div>
       </section>
 
+      <section id="capture" class="panel">
+        <div class="toolbar">
+          <h2 class="section-title" style="margin:0">Capture</h2>
+          <div class="grow"></div>
+        </div>
+        <div class="card" style="max-width:640px;margin:0 auto">
+          <div class="sub" style="margin-bottom:10px;color:var(--fg-muted);font-size:13px">Drop a thought — it lands in the vault. Pick a kind or leave it on auto for the router to classify.</div>
+          <div class="capture-kinds" id="capture-kinds"></div>
+          <div class="field">
+            <label for="capture-text">Text</label>
+            <textarea id="capture-text" placeholder="What's on your mind? (Cmd/Ctrl+Enter to send)"></textarea>
+          </div>
+          <div class="field" id="capture-title-wrap" style="display:none">
+            <label for="capture-title">Title (optional)</label>
+            <input id="capture-title" placeholder="Short label" />
+          </div>
+          <div class="modal-actions" style="margin-top:14px">
+            <button class="btn ghost" id="capture-clear">Clear</button>
+            <button class="btn primary" id="capture-send">Capture</button>
+          </div>
+          <div id="capture-result" style="margin-top:14px"></div>
+        </div>
+      </section>
+
       <section id="audit" class="panel">
         <h2 class="section-title">Audit log (last 100)</h2>
         <div id="audit-wrap"></div>
       </section>
     </main>
+  </div>
+
+  <div class="modal-overlay" id="modal-overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h2 id="modal-title">Modal</h2>
+      <div class="sub" id="modal-sub"></div>
+      <div id="modal-body"></div>
+      <div class="modal-actions" id="modal-actions">
+        <button class="btn ghost" id="modal-cancel">Cancel</button>
+        <button class="btn primary" id="modal-submit">Submit</button>
+      </div>
+    </div>
   </div>
 
   <div class="toasts" id="toasts"></div>
@@ -1173,6 +1340,7 @@ export function dashboardHtml(token: string): string {
               ? \`<button class="btn" data-action="resume" data-name="\${escapeHtml(r.name)}">Resume</button>\`
               : \`<button class="btn" data-action="pause" data-name="\${escapeHtml(r.name)}">Pause</button>\`}
             <div class="grow" style="flex:1"></div>
+            <button class="btn ghost" data-action="edit" data-name="\${escapeHtml(r.name)}">Edit</button>
             <button class="btn danger" data-action="delete" data-name="\${escapeHtml(r.name)}">Delete</button>
           </div>
         </div>
@@ -1185,6 +1353,11 @@ export function dashboardHtml(token: string): string {
       const action = btn.dataset.action;
       if (action === 'delete') {
         return showDeleteConfirm(btn, name);
+      }
+      if (action === 'edit') {
+        const row = state.schedRows.find(r => r.name === name);
+        if (row) openRoutineModal(row);
+        return;
       }
       btn.disabled = true;
       const original = btn.innerHTML;
@@ -1555,6 +1728,7 @@ export function dashboardHtml(token: string): string {
       memory: loadMemory,
       subagents: loadSubagents,
       audit: loadAudit,
+      capture: async () => { if (!captureKinds.length) await loadCaptureKinds(); },
     };
 
     function switchTab(tab){
@@ -1744,8 +1918,264 @@ export function dashboardHtml(token: string): string {
       clearBtn.parentElement.insertBefore(testBtn, clearBtn);
     })();
 
+    // ───── modal infra ─────
+    const modalOverlay = document.getElementById('modal-overlay');
+    const modalTitle = document.getElementById('modal-title');
+    const modalSub = document.getElementById('modal-sub');
+    const modalBody = document.getElementById('modal-body');
+    const modalSubmit = document.getElementById('modal-submit');
+    const modalCancel = document.getElementById('modal-cancel');
+    let modalHandler = null;
+
+    function openModal({ title, sub, bodyHtml, submitLabel, onSubmit }){
+      modalTitle.textContent = title;
+      modalSub.textContent = sub || '';
+      modalBody.innerHTML = bodyHtml;
+      modalSubmit.textContent = submitLabel || 'Submit';
+      modalSubmit.disabled = false;
+      modalHandler = onSubmit;
+      modalOverlay.classList.add('open');
+      modalOverlay.setAttribute('aria-hidden','false');
+      const firstInput = modalBody.querySelector('input, textarea, select');
+      if (firstInput) firstInput.focus();
+    }
+    function closeModal(){
+      modalOverlay.classList.remove('open');
+      modalOverlay.setAttribute('aria-hidden','true');
+      modalHandler = null;
+      modalBody.innerHTML = '';
+    }
+    modalCancel.addEventListener('click', closeModal);
+    modalOverlay.addEventListener('click', (ev) => { if (ev.target === modalOverlay) closeModal(); });
+    modalSubmit.addEventListener('click', async () => {
+      if (!modalHandler) return;
+      modalSubmit.disabled = true;
+      modalSubmit.innerHTML = '<span class="spinner"></span>';
+      try {
+        const keep = await modalHandler();
+        if (!keep) closeModal();
+      } catch (e) {
+        toast(e.message, 'err');
+        modalSubmit.disabled = false;
+        modalSubmit.textContent = 'Submit';
+      }
+    });
+    window.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape' && modalOverlay.classList.contains('open')) closeModal();
+      if ((ev.metaKey || ev.ctrlKey) && ev.key === 'Enter' && modalOverlay.classList.contains('open')) modalSubmit.click();
+    });
+
+    // ───── catalogs ─────
+    let missionsCatalog = [];
+    async function loadCatalog(){
+      try {
+        const r = await getJson('/api/missions/catalog');
+        missionsCatalog = r.missions || [];
+      } catch {}
+    }
+    function missionOptions(selected){
+      return missionsCatalog.map(m => {
+        const sel = selected === m.id ? ' selected' : '';
+        return '<option value="' + escapeHtml(m.id) + '"' + sel + '>' + escapeHtml(m.id) + (m.description ? ' — ' + escapeHtml(m.description.slice(0, 50)) : '') + '</option>';
+      }).join('');
+    }
+
+    // ───── routine create + edit modal ─────
+    function openRoutineModal(existing){
+      const isEdit = !!existing;
+      const name = existing ? existing.name : '';
+      const mission = existing ? existing.mission : (missionsCatalog[0]?.id || '');
+      const schedule = existing ? existing.schedule : '0 7 * * *';
+      const priority = existing ? existing.priority : 0;
+      let argsText = '{}';
+      try { if (existing && existing.args) argsText = JSON.stringify(JSON.parse(existing.args), null, 2); } catch {}
+      const body = \`
+        <div class="field"><label>Name</label>
+          <input id="rf-name" value="\${escapeHtml(name)}" placeholder="my-routine" \${isEdit ? 'disabled' : ''} spellcheck="false" />
+          <div class="help">Unique slug · lowercase · [a-z0-9_-]{1,64}</div>
+          <div class="err">name invalid</div>
+        </div>
+        <div class="field"><label>Mission</label>
+          <select id="rf-mission">\${missionOptions(mission)}</select>
+          <div class="err">unknown mission</div>
+        </div>
+        <div class="field"><label>Cron schedule</label>
+          <input id="rf-schedule" value="\${escapeHtml(schedule)}" placeholder="0 7 * * *" spellcheck="false" />
+          <div class="help">5-field cron · e.g. "0 7 * * *" for daily 07:00</div>
+          <div class="err">invalid cron</div>
+        </div>
+        <div class="field"><label>Priority</label>
+          <input id="rf-priority" type="number" min="0" max="100" value="\${priority}" />
+        </div>
+        <div class="field"><label>Args (JSON)</label>
+          <textarea id="rf-args" spellcheck="false">\${escapeHtml(argsText)}</textarea>
+          <div class="err">invalid JSON</div>
+        </div>
+      \`;
+      openModal({
+        title: isEdit ? 'Edit routine' : 'New routine',
+        sub: isEdit ? 'Editing ' + name : 'Add a custom routine — cron-scheduled, runs server-side.',
+        bodyHtml: body,
+        submitLabel: isEdit ? 'Save' : 'Create',
+        onSubmit: async () => {
+          const fields = {
+            name: modalBody.querySelector('#rf-name').value.trim(),
+            mission: modalBody.querySelector('#rf-mission').value,
+            schedule: modalBody.querySelector('#rf-schedule').value.trim(),
+            priority: Number.parseInt(modalBody.querySelector('#rf-priority').value, 10) || 0,
+            argsRaw: modalBody.querySelector('#rf-args').value.trim() || '{}',
+          };
+          let args = {};
+          try { args = JSON.parse(fields.argsRaw); } catch { markFieldError('rf-args'); return true; }
+          clearFieldErrors();
+          try {
+            if (isEdit) {
+              const res = await fetch(withQ('/api/scheduler/' + encodeURIComponent(name)), {
+                method: 'PATCH',
+                headers: { 'content-type': 'application/json', 'x-dashboard-token': TOKEN },
+                body: JSON.stringify({ schedule: fields.schedule, priority: fields.priority, args }),
+              });
+              const data = await res.json().catch(()=>({}));
+              if (!res.ok) throw new Error(data.error || ('edit failed ' + res.status));
+              toast('routine ' + name + ' updated', 'ok');
+            } else {
+              await postJson('/api/scheduler', { name: fields.name, mission: fields.mission, schedule: fields.schedule, priority: fields.priority, args });
+              toast('routine ' + fields.name + ' created', 'ok');
+            }
+            await loadRoutines();
+          } catch (e) {
+            toast(e.message, 'err');
+            return true;
+          }
+        },
+      });
+    }
+    function markFieldError(id){
+      const field = modalBody.querySelector('#' + id)?.closest('.field');
+      if (field) field.classList.add('error');
+    }
+    function clearFieldErrors(){
+      modalBody.querySelectorAll('.field.error').forEach(f => f.classList.remove('error'));
+    }
+
+    // ───── adhoc mission modal ─────
+    function openAdhocModal(){
+      const body = \`
+        <div class="field"><label>Mission</label>
+          <select id="af-mission">\${missionOptions(missionsCatalog[0]?.id)}</select>
+        </div>
+        <div class="field"><label>Title (optional)</label>
+          <input id="af-title" placeholder="manual run" />
+        </div>
+        <div class="field"><label>Args (JSON)</label>
+          <textarea id="af-args" spellcheck="false">{}</textarea>
+          <div class="err">invalid JSON</div>
+        </div>
+      \`;
+      openModal({
+        title: 'Run ad-hoc mission',
+        sub: 'Fire a mission once, without touching the cron schedule.',
+        bodyHtml: body,
+        submitLabel: 'Run now',
+        onSubmit: async () => {
+          const mission = modalBody.querySelector('#af-mission').value;
+          const title = modalBody.querySelector('#af-title').value.trim() || undefined;
+          let args = {};
+          try { args = JSON.parse(modalBody.querySelector('#af-args').value.trim() || '{}'); } catch { markFieldError('af-args'); return true; }
+          clearFieldErrors();
+          try {
+            const r = await postJson('/api/missions/adhoc', { mission, args, title });
+            toast('mission queued as #' + r.mission_task_id, 'ok');
+            await loadMissions();
+          } catch (e) {
+            toast(e.message, 'err');
+            return true;
+          }
+        },
+      });
+    }
+
+    document.getElementById('routines-new').addEventListener('click', () => openRoutineModal(null));
+    document.getElementById('missions-adhoc').addEventListener('click', () => openAdhocModal());
+
+    // ───── capture ─────
+    let captureKinds = [];
+    let activeKind = null;
+    async function loadCaptureKinds(){
+      try {
+        const r = await getJson('/api/capture/kinds');
+        captureKinds = r.kinds || [];
+        renderCaptureKinds();
+      } catch (e) {
+        document.getElementById('capture-kinds').innerHTML = '<div class="muted">Failed to load capture kinds</div>';
+      }
+    }
+    function renderCaptureKinds(){
+      const wrap = document.getElementById('capture-kinds');
+      wrap.innerHTML = '<button class="kind-btn' + (activeKind === null ? ' active' : '') + '" data-kind="">' +
+        '<span class="emoji">✨</span>Auto' +
+        '</button>' +
+        captureKinds.map(k =>
+          '<button class="kind-btn' + (activeKind === k.id ? ' active' : '') + '" data-kind="' + escapeHtml(k.id) + '" title="' + escapeHtml(k.description || '') + '">' +
+          '<span class="emoji">' + escapeHtml(k.emoji || '•') + '</span>' +
+          escapeHtml(k.label || k.id) +
+          '</button>'
+        ).join('');
+      wrap.querySelectorAll('.kind-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          activeKind = btn.dataset.kind || null;
+          const needsTitle = activeKind === 'task' || activeKind === 'literature' || activeKind === 'thesis';
+          document.getElementById('capture-title-wrap').style.display = needsTitle ? 'block' : 'none';
+          renderCaptureKinds();
+        });
+      });
+    }
+    async function submitCapture(){
+      const text = document.getElementById('capture-text').value.trim();
+      if (!text) { toast('Nothing to capture', 'info'); return; }
+      const title = document.getElementById('capture-title').value.trim() || undefined;
+      const resultWrap = document.getElementById('capture-result');
+      const btn = document.getElementById('capture-send');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Sending';
+      try {
+        const r = await postJson('/api/capture', { text, kind: activeKind || undefined, title });
+        toast('captured as ' + r.kind, 'ok');
+        resultWrap.innerHTML =
+          '<div class="card" style="padding:10px 12px;background:var(--bg-2);border-left:2px solid var(--ok)">' +
+          '<div class="muted" style="font-size:11.5px;margin-bottom:4px">' + escapeHtml(r.kind) + ' · ' + escapeHtml(fmtClock(Date.now())) + '</div>' +
+          (r.summary ? '<div>' + escapeHtml(r.summary) + '</div>' : '') +
+          (r.ref?.vault_path ? '<div class="muted" style="font-size:11.5px;margin-top:4px">→ ' + escapeHtml(r.ref.vault_path) + '</div>' : '') +
+          '</div>';
+        document.getElementById('capture-text').value = '';
+      } catch (e) {
+        toast('capture failed: ' + e.message, 'err');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Capture';
+      }
+    }
+    document.getElementById('capture-send').addEventListener('click', submitCapture);
+    document.getElementById('capture-clear').addEventListener('click', () => {
+      document.getElementById('capture-text').value = '';
+      document.getElementById('capture-title').value = '';
+      document.getElementById('capture-result').innerHTML = '';
+    });
+    document.getElementById('capture-text').addEventListener('keydown', (ev) => {
+      if ((ev.metaKey || ev.ctrlKey) && ev.key === 'Enter') { ev.preventDefault(); submitCapture(); }
+    });
+
+    // ───── logout ─────
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      try {
+        await fetch('/api/auth/logout', { method: 'POST', headers: { 'content-type': 'application/json' } });
+      } catch {}
+      location.href = '/';
+    });
+
     // ───── boot ─────
     async function boot(){
+      await loadCatalog();
       const hash = location.hash.replace('#','');
       if (hash && TABS[hash]) switchTab(hash);
       else switchTab('pulse');

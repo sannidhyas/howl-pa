@@ -182,6 +182,30 @@ async function main() {
         existing.OLLAMA_URL = 'http://localhost:11434';
     if (!existing.OLLAMA_EMBED_MODEL)
         existing.OLLAMA_EMBED_MODEL = 'nomic-embed-text';
+    await maybeUpdate(existing, 'DASHBOARD_USERNAME', 'Dashboard username (default: howl)');
+    if (!existing.DASHBOARD_USERNAME)
+        existing.DASHBOARD_USERNAME = 'howl';
+    const dashPw = await prompt('Dashboard password (blank = token-only auth, recommended for localhost): ', true);
+    if (dashPw) {
+        const confirmPw = await prompt('Confirm dashboard password: ', true);
+        if (dashPw !== confirmPw) {
+            console.error('❌ Password mismatch.');
+            process.exit(1);
+        }
+        // Use PIN_SALT if available, otherwise generate a dedicated salt
+        const salt = existing.PIN_SALT || (() => {
+            const s = randomBytes(16).toString('hex');
+            existing.DASHBOARD_PASSWORD_SALT = s;
+            return s;
+        })();
+        const hash = createHash('sha256').update(`${salt}:${dashPw}`).digest('hex');
+        existing.DASHBOARD_PASSWORD_HASH = hash;
+        console.log('  DASHBOARD_PASSWORD_HASH set');
+    }
+    console.log('  Bind host: 127.0.0.1 = localhost only (default, recommended); 0.0.0.0 = exposed (use with reverse proxy + TLS)');
+    await maybeUpdate(existing, 'DASHBOARD_HOST', 'Bind host (127.0.0.1 or 0.0.0.0)');
+    if (!existing.DASHBOARD_HOST)
+        existing.DASHBOARD_HOST = '127.0.0.1';
     // Silently remove any legacy HOWL_PROFILE key so the env stays clean.
     delete existing.HOWL_PROFILE;
     writeFileSync(envPath, serializeEnv(existing), { mode: 0o600 });

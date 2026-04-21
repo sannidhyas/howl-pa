@@ -62,6 +62,10 @@ export const VAULT_PATH = expandPath(optional('VAULT_PATH', '~/Documents/vault')
 export const STORE_DIR = join(CLAUDECLAW_CONFIG, 'store');
 export const DB_PATH = join(STORE_DIR, 'howl.db');
 export const LOCK_PATH = join(STORE_DIR, 'claudeclaw.pid');
+export const DASHBOARD_HOST = optional('DASHBOARD_HOST', '127.0.0.1');
+export const DASHBOARD_USERNAME = optional('DASHBOARD_USERNAME', 'howl');
+export const DASHBOARD_PASSWORD_HASH = optional('DASHBOARD_PASSWORD_HASH');
+export const DASHBOARD_SESSION_SECRET = optional('DASHBOARD_SESSION_SECRET');
 // Observability
 export const LOG_LEVEL = optional('LOG_LEVEL', 'info');
 export const NODE_ENV = optional('NODE_ENV', 'development');
