@@ -1,10 +1,17 @@
 import { google } from 'googleapis'
-import { listGmailSince, topGmailByImportance, upsertGmailItem, type GmailItemRow } from './db.js'
+import {
+  getGmailSyncState,
+  listGmailSince,
+  setGmailSyncState,
+  topGmailByImportance,
+  upsertGmailItem,
+  type GmailItemRow,
+} from './db.js'
 import { getAuthedClient, googleAuthConfigured, googleTokenSaved } from './google-auth.js'
 import { logger } from './logger.js'
 
-const MAX_FETCH = Number.parseInt(process.env.GMAIL_MAX_FETCH ?? '50', 10)
-const LOOKBACK_HOURS = Number.parseInt(process.env.GMAIL_LOOKBACK_HOURS ?? '24', 10)
+const MAX_FETCH = 100
+const MAX_TOTAL_FETCH = 1000
 const DEFAULT_QUERY = process.env.GMAIL_QUERY?.trim() || undefined
 
 export type PollResult = {
@@ -25,47 +32,63 @@ function headerValue(headers: Array<{ name?: string | null; value?: string | nul
   return undefined
 }
 
-export async function pollInbox(lookbackHours = LOOKBACK_HOURS): Promise<PollResult> {
+function gmailQuery(lastSyncMs: number | null): string {
+  const syncQuery = lastSyncMs === null
+    ? 'newer_than:30d'
+    : `after:${Math.floor(lastSyncMs / 1000)}`
+  return DEFAULT_QUERY ? `${DEFAULT_QUERY} ${syncQuery}` : syncQuery
+}
+
+export async function pollInbox(): Promise<PollResult> {
   if (!(await isGmailReady())) {
     return { ok: false, reason: 'not configured', fetched: 0, stored: 0 }
   }
   const auth = await getAuthedClient()
   const gmail = google.gmail({ version: 'v1', auth })
 
-  const afterSec = Math.floor((Date.now() - lookbackHours * 3600_000) / 1000)
-  const q = DEFAULT_QUERY
-    ? `${DEFAULT_QUERY} after:${afterSec}`
-    : `in:inbox after:${afterSec}`
-  let listRes
-  try {
-    listRes = await gmail.users.messages.list({ userId: 'me', q, maxResults: MAX_FETCH })
-  } catch (err) {
-    logger.error({ err: err instanceof Error ? err.message : err }, 'gmail list failed')
-    return { ok: false, reason: 'list failed', fetched: 0, stored: 0 }
-  }
-  const msgs = listRes.data.messages ?? []
+  const q = gmailQuery(getGmailSyncState())
+  let pageToken: string | undefined
+  let fetched = 0
   let stored = 0
-  for (const m of msgs) {
-    if (!m.id) continue
+
+  while (fetched < MAX_TOTAL_FETCH) {
+    const maxResults = Math.min(MAX_FETCH, MAX_TOTAL_FETCH - fetched)
+    let listRes
     try {
-      const msg = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'metadata' })
-      const headers = msg.data.payload?.headers ?? []
-      upsertGmailItem({
-        id: m.id,
-        threadId: msg.data.threadId ?? undefined,
-        sender: headerValue(headers, 'From'),
-        subject: headerValue(headers, 'Subject'),
-        snippet: msg.data.snippet ?? undefined,
-        internalDate: Number.parseInt(msg.data.internalDate ?? '0', 10) || undefined,
-        labels: msg.data.labelIds ?? undefined,
-        unread: (msg.data.labelIds ?? []).includes('UNREAD'),
-      })
-      stored += 1
+      listRes = await gmail.users.messages.list({ userId: 'me', q, maxResults, pageToken })
     } catch (err) {
-      logger.warn({ err: err instanceof Error ? err.message : err, id: m.id }, 'gmail get failed')
+      logger.error({ err: err instanceof Error ? err.message : err }, 'gmail list failed')
+      return { ok: false, reason: 'list failed', fetched, stored }
     }
+    const msgs = listRes.data.messages ?? []
+    fetched += msgs.length
+    for (const m of msgs) {
+      if (!m.id) continue
+      try {
+        const msg = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'metadata' })
+        const headers = msg.data.payload?.headers ?? []
+        upsertGmailItem({
+          id: m.id,
+          threadId: msg.data.threadId ?? undefined,
+          sender: headerValue(headers, 'From'),
+          subject: headerValue(headers, 'Subject'),
+          snippet: msg.data.snippet ?? undefined,
+          internalDate: Number.parseInt(msg.data.internalDate ?? '0', 10) || undefined,
+          labels: msg.data.labelIds ?? undefined,
+          unread: (msg.data.labelIds ?? []).includes('UNREAD'),
+          inInbox: (msg.data.labelIds ?? []).includes('INBOX'),
+        })
+        stored += 1
+      } catch (err) {
+        logger.warn({ err: err instanceof Error ? err.message : err, id: m.id }, 'gmail get failed')
+      }
+    }
+    pageToken = listRes.data.nextPageToken ?? undefined
+    if (!pageToken) break
   }
-  return { ok: true, fetched: msgs.length, stored }
+
+  setGmailSyncState(Date.now())
+  return { ok: true, fetched, stored }
 }
 
 /**

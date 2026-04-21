@@ -262,6 +262,7 @@ function applySchema(db: DatabaseSync): void {
       internal_date INTEGER,
       labels TEXT,
       unread INTEGER NOT NULL DEFAULT 1,
+      in_inbox INTEGER NOT NULL DEFAULT 1,
       importance INTEGER,
       importance_reason TEXT,
       classified_at INTEGER,
@@ -308,6 +309,8 @@ function applySchema(db: DatabaseSync): void {
   const gmailCols = (
     db.prepare(`PRAGMA table_info(gmail_items)`).all() as Array<{ name: string }>
   ).map(r => r.name)
+  if (!gmailCols.includes('in_inbox'))
+    db.exec(`ALTER TABLE gmail_items ADD COLUMN in_inbox INTEGER NOT NULL DEFAULT 1`)
   if (!gmailCols.includes('importance')) db.exec(`ALTER TABLE gmail_items ADD COLUMN importance INTEGER`)
   if (!gmailCols.includes('importance_reason'))
     db.exec(`ALTER TABLE gmail_items ADD COLUMN importance_reason TEXT`)
@@ -378,6 +381,19 @@ export function upsertMirrorState(args: {
          updated_at=strftime('%s','now') * 1000`
     )
     .run(args.sourcePath, args.mtime, args.vaultPath, args.kind ?? null, args.summaryModel ?? null)
+}
+
+const GMAIL_SYNC_STATE_KEY = '__gmail_sync_state__'
+
+export function getGmailSyncState(): number | null {
+  const row = getDb()
+    .prepare(`SELECT mtime FROM mirror_state WHERE source_path = ?`)
+    .get(GMAIL_SYNC_STATE_KEY) as { mtime: number } | undefined
+  return row?.mtime ?? null
+}
+
+export function setGmailSyncState(ms: number): void {
+  upsertMirrorState({ sourcePath: GMAIL_SYNC_STATE_KEY, mtime: ms, vaultPath: '', kind: 'gmailLastSyncMs' })
 }
 
 // Session helpers ----------------------------------------------------------
@@ -905,6 +921,7 @@ export type GmailItemRow = {
   internal_date: number | null
   labels: string | null
   unread: number
+  in_inbox: number
   importance: number | null
   importance_reason: string | null
   classified_at: number | null
@@ -920,15 +937,16 @@ export function upsertGmailItem(item: {
   internalDate?: number
   labels?: string[]
   unread?: boolean
+  inInbox?: boolean
 }): void {
   getDb()
     .prepare(
-      `INSERT INTO gmail_items (id, thread_id, sender, subject, snippet, internal_date, labels, unread)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO gmail_items (id, thread_id, sender, subject, snippet, internal_date, labels, unread, in_inbox)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          thread_id=excluded.thread_id, sender=excluded.sender, subject=excluded.subject,
          snippet=excluded.snippet, internal_date=excluded.internal_date, labels=excluded.labels,
-         unread=excluded.unread`
+         unread=excluded.unread, in_inbox=excluded.in_inbox`
     )
     .run(
       item.id,
@@ -938,7 +956,8 @@ export function upsertGmailItem(item: {
       item.snippet ?? null,
       item.internalDate ?? null,
       item.labels ? JSON.stringify(item.labels) : null,
-      item.unread === false ? 0 : 1
+      item.unread === false ? 0 : 1,
+      item.inInbox === false ? 0 : 1
     )
 }
 
@@ -946,7 +965,7 @@ export function listGmailSince(sinceMs: number, limit = 20): GmailItemRow[] {
   return getDb()
     .prepare(
       `SELECT id, thread_id, sender, subject, snippet, internal_date, labels, unread,
-              importance, importance_reason, classified_at, created_at
+              in_inbox, importance, importance_reason, classified_at, created_at
        FROM gmail_items WHERE internal_date >= ? ORDER BY internal_date DESC LIMIT ?`
     )
     .all(sinceMs, limit) as GmailItemRow[]
@@ -956,7 +975,7 @@ export function listGmailUnclassified(limit = 25): GmailItemRow[] {
   return getDb()
     .prepare(
       `SELECT id, thread_id, sender, subject, snippet, internal_date, labels, unread,
-              importance, importance_reason, classified_at, created_at
+              in_inbox, importance, importance_reason, classified_at, created_at
        FROM gmail_items WHERE importance IS NULL
        ORDER BY internal_date DESC LIMIT ?`
     )
@@ -967,7 +986,7 @@ export function topGmailByImportance(sinceMs: number, limit = 10): GmailItemRow[
   return getDb()
     .prepare(
       `SELECT id, thread_id, sender, subject, snippet, internal_date, labels, unread,
-              importance, importance_reason, classified_at, created_at
+              in_inbox, importance, importance_reason, classified_at, created_at
        FROM gmail_items
        WHERE internal_date >= ? AND importance IS NOT NULL
        ORDER BY importance DESC, internal_date DESC LIMIT ?`

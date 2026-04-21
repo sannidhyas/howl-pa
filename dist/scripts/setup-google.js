@@ -6,6 +6,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { loadEnv, resolveConfigDir } from '../src/env.js';
+import ora from 'ora';
 // Load config/.env + project .env into process.env BEFORE importing
 // google-auth (which reads process.env at module scope).
 const configDir = resolveConfigDir();
@@ -158,8 +159,18 @@ async function main() {
     console.log('\nThen open this URL in any browser (same machine):\n');
     console.log('This requests Gmail, Calendar event, and Google Tasks scopes. Use --force to re-consent after upgrading from pre-Tasks builds.\n');
     console.log(authUrl());
-    console.log('\nWaiting for callback (5 min timeout)…');
-    const code = await captureCode();
+    const waitSpinner = process.stdout.isTTY ? ora('Waiting for OAuth callback…').start() : undefined;
+    if (!waitSpinner)
+        console.log('\nWaiting for callback (5 min timeout)…');
+    let code;
+    try {
+        code = await captureCode();
+        waitSpinner?.succeed('OAuth callback received.');
+    }
+    catch (err) {
+        waitSpinner?.fail('OAuth callback failed.');
+        throw err;
+    }
     await exchangeCode(code);
     console.log('\n✅ ~/.claudeclaw/google-token.json saved.');
 }

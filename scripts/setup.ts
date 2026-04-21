@@ -4,10 +4,31 @@ import { homedir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
+import chalk from 'chalk'
+import ora from 'ora'
 
 function expand(p: string): string {
   if (p.startsWith('~/')) return join(homedir(), p.slice(2))
   return p
+}
+
+async function withSpinner<T>(
+  text: string,
+  fn: () => T | Promise<T>,
+  ok?: (result: T) => boolean
+): Promise<T> {
+  const spinner = process.stdout.isTTY ? ora(text).start() : undefined
+  try {
+    const result = await fn()
+    if (spinner) {
+      if (ok && !ok(result)) spinner.fail(text)
+      else spinner.succeed(text)
+    }
+    return result
+  } catch (err) {
+    spinner?.fail(text)
+    throw err
+  }
 }
 
 function resolveConfigDir(): string {
@@ -40,7 +61,7 @@ async function prompt(question: string, hidden = false): Promise<string> {
     const onData = (chunk: Buffer): void => {
       const s = chunk.toString('utf8')
       for (const ch of s) {
-        if (ch === '\n' || ch === '\r' || ch === '') {
+        if (ch === '\n' || ch === '\r' || ch === '\x04') {
           process.stdout.write('\n')
           process.stdin.setRawMode?.(false)
           process.stdin.pause()
@@ -49,11 +70,11 @@ async function prompt(question: string, hidden = false): Promise<string> {
           resolve(input.trim())
           return
         }
-        if (ch === '') {
+        if (ch === '\x03') {
           process.stdout.write('\n')
           process.exit(130)
         }
-        if (ch === '') {
+        if (ch === '\x7f') {
           if (input.length > 0) {
             input = input.slice(0, -1)
             process.stdout.write('\b \b')
@@ -99,9 +120,11 @@ async function maybeUpdate(
   const shown = current
     ? opts.hidden
       ? '<set>'
-      : current.length > 20
-        ? `${current.slice(0, 6)}…${current.slice(-4)}`
-        : current
+      : /^[\w./~-]+$/.test(current)
+        ? current
+        : current.length > 20
+          ? `${current.slice(0, 6)}…${current.slice(-4)}`
+          : current
     : '<unset>'
   const value = await prompt(`${question} (current: ${shown}): `, opts.hidden)
   if (!value) return
@@ -116,19 +139,28 @@ async function maybeUpdate(
 }
 
 function check(label: string, ok: boolean, detail = ''): void {
-  console.log(`  ${ok ? '✔' : '✘'} ${label}${detail ? ` — ${detail}` : ''}`)
+  const mark = ok ? chalk.green('✔') : chalk.red('✘')
+  console.log(`  ${mark} ${label}${detail ? ` — ${detail}` : ''}`)
 }
 
-function preflight(): void {
+async function preflight(): Promise<void> {
   console.log('\nPre-flight checks:')
   const node = Number.parseInt(process.versions.node.split('.')[0] ?? '0', 10)
   check('Node ≥ 22', node >= 22, process.version)
 
-  const codex = spawnSync('codex', ['--version'], { encoding: 'utf8' })
+  const codex = await withSpinner(
+    'Checking codex CLI…',
+    () => spawnSync('codex', ['--version'], { encoding: 'utf8' }),
+    result => result.status === 0
+  )
   const codexOk = codex.status === 0
   check('codex CLI on PATH', codexOk, codexOk ? codex.stdout.trim() : 'install from https://github.com/openai/codex and run `codex login`')
 
-  const ollama = spawnSync('curl', ['-s', '-m', '2', `${process.env.OLLAMA_URL ?? 'http://localhost:11434'}/api/tags`], { encoding: 'utf8' })
+  const ollama = await withSpinner(
+    'Probing Ollama…',
+    () => spawnSync('curl', ['-s', '-m', '2', `${process.env.OLLAMA_URL ?? 'http://localhost:11434'}/api/tags`], { encoding: 'utf8' }),
+    result => result.status === 0 && result.stdout.includes('"models"')
+  )
   const ollamaOk = ollama.status === 0 && ollama.stdout.includes('"models"')
   check('Ollama reachable (optional)', ollamaOk, ollamaOk ? 'ok' : 'start with `ollama serve`; pull nomic-embed-text + a chat model')
 
@@ -222,14 +254,16 @@ async function main(): Promise<void> {
   // Silently remove any legacy HOWL_PROFILE key so the env stays clean.
   delete existing.HOWL_PROFILE
 
-  writeFileSync(envPath, serializeEnv(existing), { mode: 0o600 })
-  chmodSync(envPath, 0o600)
+  await withSpinner('Writing .env…', () => {
+    writeFileSync(envPath, serializeEnv(existing), { mode: 0o600 })
+    chmodSync(envPath, 0o600)
+  })
 
   console.log(`\n✅ wrote ${envPath}`)
   console.log(`   PIN=${existing.PIN_HASH ? 'set' : 'unset'} · KILL_PHRASE=${existing.KILL_PHRASE ? 'set' : 'unset'}`)
   console.log(`   Dashboard: http://localhost:${existing.DASHBOARD_PORT}/?token=${existing.DASHBOARD_TOKEN}`)
 
-  preflight()
+  await preflight()
 
   const vault = expand(existing.VAULT_PATH ?? '~/Documents/vault')
   console.log('Next:')
@@ -240,6 +274,14 @@ async function main(): Promise<void> {
   console.log('       howl-pa setup:google')
   console.log('  3. Launch:')
   console.log('       howl-pa start')
+
+  console.log('\n┌─ Config summary ────────────────────────────────────┐')
+  console.log(`│ Config dir:   ${configDir}`)
+  console.log(`│ Vault path:   ${existing.VAULT_PATH || '(not set)'}`)
+  console.log(`│ Dashboard:    http://${existing.DASHBOARD_HOST}:${existing.DASHBOARD_PORT}/?token=${existing.DASHBOARD_TOKEN}`)
+  console.log(`│ Host:         ${existing.DASHBOARD_HOST}:${existing.DASHBOARD_PORT}`)
+  console.log(`│ Username:     ${existing.DASHBOARD_USERNAME}`)
+  console.log('└─────────────────────────────────────────────────────┘')
 }
 
 main().catch(err => {
