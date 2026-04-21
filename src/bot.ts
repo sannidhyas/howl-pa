@@ -780,18 +780,17 @@ async function handleKillPhraseCheck(ctx: Context, text: string): Promise<boolea
 }
 
 async function maybeShowWelcome(ctx: Context, chatId: string): Promise<boolean> {
-  // First-run = allowlisted but no sessions yet
-  const session = latestSessionFor(chatId)
-  if (session !== null) return false
-  // Only fire once per cold start, not on every message
-  // Mark by inserting a dummy session... no — just check again. Since session
-  // starts when the agent first replies, the welcome fires exactly once
-  // (the first non-/start message before any agent reply).
+  // Welcome fires exactly once per chat across the lifetime of the DB.
+  // Sessions only get created when runAgent fires, so captures/commands/surveys
+  // never produce one — using session presence as the gate caused the welcome
+  // to replay on every reply. Persist a dedicated marker instead.
+  if (getMemory('welcome_shown', chatId) !== null) return false
   await ctx.reply(buildWelcomeHtml(), {
     parse_mode: 'HTML',
     reply_markup: buildWelcomeKeyboard(),
     link_preview_options: { is_disabled: true },
   })
+  upsertMemory('welcome_shown', chatId, new Date().toISOString())
   return false // don't consume the message — let it continue to routing
 }
 

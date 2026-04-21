@@ -55,8 +55,12 @@ function checkNode(): void {
 }
 
 function checkFiles(): void {
-  const distIndex = join(PROJECT_ROOT, 'dist', 'index.js')
-  add('dist', existsSync(distIndex) ? 'ok' : 'fail', existsSync(distIndex) ? distIndex : 'missing dist/index.js')
+  // In source mode PROJECT_ROOT is the repo and entry lives at dist/src/index.js.
+  // In installed mode PROJECT_ROOT is already the dist/ dir so entry is src/index.js.
+  const installedEntry = join(PROJECT_ROOT, 'src', 'index.js')
+  const sourceEntry = join(PROJECT_ROOT, 'dist', 'src', 'index.js')
+  const entry = existsSync(installedEntry) ? installedEntry : sourceEntry
+  add('dist', existsSync(entry) ? 'ok' : 'fail', existsSync(entry) ? entry : `missing ${sourceEntry}`)
 
   const market = join(PROJECT_ROOT, '.agents', 'plugins', 'marketplace.json')
   const caveman = join(PROJECT_ROOT, 'vendor', 'caveman', 'plugins', 'caveman', '.codex-plugin', 'plugin.json')
