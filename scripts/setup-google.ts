@@ -77,6 +77,7 @@ async function main(): Promise<void> {
   console.log('Google Cloud Console → Credentials → <client> → edit → Add URI:')
   console.log(`    ${REDIRECT}`)
   console.log('\nThen open this URL in any browser (same machine):\n')
+  console.log('This requests Gmail, Calendar event, and Google Tasks scopes. Use --force to re-consent after upgrading from pre-Tasks builds.\n')
   console.log(authUrl())
   console.log('\nWaiting for callback (5 min timeout)…')
 

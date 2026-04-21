@@ -11,7 +11,7 @@ const DESIGN_HINTS = new Set(['ui', 'ux', 'design', 'visual', 'layout', 'css', '
 const claude = new ClaudeBackend()
 const codex = new CodexBackend()
 
-const ollamaModels = (process.env.OLLAMA_MODELS ?? 'qwen3-coder,ministral-3')
+const ollamaModels = (process.env.OLLAMA_MODELS ?? 'qwen2.5-coder:3b,ministral-3:latest,hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:TQ1_0')
   .split(',')
   .map(s => s.trim())
   .filter(Boolean)
@@ -78,7 +78,7 @@ function pickCouncilMembers(input: SubagentInput, opts: DispatchOptions): string
   }
   if (hints.includes('code') || hints.includes('refactor') || hints.includes('debug')) {
     list.push('codex')
-    if (ollama.has('qwen3-coder')) list.push('ollama:qwen3-coder')
+    if (ollama.has('qwen2.5-coder:3b')) list.push('ollama:qwen2.5-coder:3b')
     else {
       const firstOllama = [...ollama.keys()][0]
       if (firstOllama) list.push(`ollama:${firstOllama}`)

@@ -62,6 +62,43 @@ export async function pollCalendar(lookAheadHours = 36): Promise<PollResult> {
   return { ok: true, fetched: events.length, stored }
 }
 
+export async function createCalendarBlock(args: {
+  summary: string
+  startsAt: Date
+  endsAt: Date
+  description?: string
+}): Promise<CalendarEventRow | null> {
+  if (!(await isCalendarReady())) return null
+  const auth = await getAuthedClient()
+  const cal = google.calendar({ version: 'v3', auth })
+  const res = await cal.events.insert({
+    calendarId: 'primary',
+    requestBody: {
+      summary: args.summary,
+      description: args.description,
+      start: { dateTime: args.startsAt.toISOString() },
+      end: { dateTime: args.endsAt.toISOString() },
+    },
+  })
+  const ev = res.data
+  if (!ev.id) return null
+  const startMs = toMs(ev.start?.dateTime ?? ev.start?.date ?? null)
+  const endMs = toMs(ev.end?.dateTime ?? ev.end?.date ?? null)
+  const meetLink = extractMeetLink(ev)
+  upsertCalendarEvent({
+    id: ev.id,
+    summary: ev.summary ?? undefined,
+    location: ev.location ?? undefined,
+    startsAt: startMs ?? undefined,
+    endsAt: endMs ?? undefined,
+    htmlLink: ev.htmlLink ?? undefined,
+    meetLink,
+    attendees: (ev.attendees ?? []).map(a => a.email ?? '').filter(Boolean),
+    description: ev.description ?? undefined,
+  })
+  return calendarBetween(startMs ?? args.startsAt.getTime(), (endMs ?? args.endsAt.getTime()) + 1)[0] ?? null
+}
+
 function toMs(raw: string | null): number | undefined {
   if (!raw) return undefined
   const parsed = Date.parse(raw)

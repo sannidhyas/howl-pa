@@ -235,28 +235,24 @@ function applySchema(db: DatabaseSync): void {
     );
     CREATE INDEX IF NOT EXISTS idx_cal_starts ON calendar_events(starts_at);
 
-    CREATE TABLE IF NOT EXISTS wa_messages (
+    CREATE TABLE IF NOT EXISTS tasks_items (
       id TEXT PRIMARY KEY,
-      chat_jid TEXT,
-      sender_jid TEXT,
-      sender_name TEXT,
-      content_enc BLOB,
-      content_iv BLOB,
-      content_tag BLOB,
-      is_group INTEGER NOT NULL DEFAULT 0,
-      is_from_me INTEGER NOT NULL DEFAULT 0,
-      media_kind TEXT,
-      ts INTEGER,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+      list_id TEXT NOT NULL DEFAULT '@default',
+      title TEXT NOT NULL,
+      notes TEXT,
+      due_ts INTEGER,
+      status TEXT NOT NULL DEFAULT 'needs_push',
+      updated_at INTEGER,
+      synced_at INTEGER,
+      importance INTEGER,
+      importance_reason TEXT
     );
-    CREATE INDEX IF NOT EXISTS idx_wa_chat_ts ON wa_messages(chat_jid, ts DESC);
-
-    CREATE TABLE IF NOT EXISTS wa_allowlist (
-      jid TEXT PRIMARY KEY,
-      display_name TEXT,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
-    );
+    CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks_items(status, due_ts);
+    CREATE INDEX IF NOT EXISTS idx_tasks_list ON tasks_items(list_id, updated_at DESC);
   `)
+
+  db.exec(`DROP TABLE IF EXISTS wa_messages`)
+  db.exec(`DROP TABLE IF EXISTS wa_allowlist`)
 
   // Inline column migrations for pre-existing DBs. Adding columns is safe
   // because SQLite appends; data stays intact.
@@ -271,6 +267,13 @@ function applySchema(db: DatabaseSync): void {
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_gmail_importance ON gmail_items(importance DESC, internal_date DESC)`
   )
+
+  const taskCols = (
+    db.prepare(`PRAGMA table_info(tasks_items)`).all() as Array<{ name: string }>
+  ).map(r => r.name)
+  if (!taskCols.includes('importance')) db.exec(`ALTER TABLE tasks_items ADD COLUMN importance INTEGER`)
+  if (!taskCols.includes('importance_reason'))
+    db.exec(`ALTER TABLE tasks_items ADD COLUMN importance_reason TEXT`)
 }
 
 export function getMirrorState(sourcePath: string): { mtime: number; vault_path: string } | null {
@@ -605,7 +608,11 @@ export function dueScheduledTasks(now = Date.now()): ScheduledTaskRow[] {
 
 export function markTaskRunning(id: number): void {
   getDb()
-    .prepare(`UPDATE scheduled_tasks SET status='running' WHERE id = ?`)
+    .prepare(
+      `UPDATE scheduled_tasks
+       SET status='running', last_run = strftime('%s','now') * 1000
+       WHERE id = ?`
+    )
     .run(id)
 }
 
@@ -635,7 +642,11 @@ export function deleteScheduledTask(name: string): boolean {
 export function recoverStuckTasks(timeoutMs: number): number {
   const info = getDb()
     .prepare(
-      `UPDATE scheduled_tasks SET status='stuck' WHERE status='running' AND last_run IS NOT NULL AND last_run < ?`
+      `UPDATE scheduled_tasks
+       SET status='active',
+           next_run=strftime('%s','now') * 1000,
+           last_result='recovered: previous run did not finish'
+       WHERE status='running' AND (last_run IS NULL OR last_run < ?)`
     )
     .run(Date.now() - timeoutMs)
   return Number(info.changes)
@@ -860,87 +871,91 @@ export function listCalendarEventsBetween(fromMs: number, toMs: number): Calenda
     .all(fromMs, toMs) as CalendarEventRow[]
 }
 
-// WhatsApp -------------------------------------------------------------
+// Google Tasks ----------------------------------------------------------
 
-export type WaMessageRow = {
+export type TaskItemRow = {
   id: string
-  chat_jid: string
-  sender_jid: string | null
-  sender_name: string | null
-  content_enc: Uint8Array
-  content_iv: Uint8Array
-  content_tag: Uint8Array
-  is_group: number
-  is_from_me: number
-  media_kind: string | null
-  ts: number | null
-  created_at: number
+  list_id: string
+  title: string
+  notes: string | null
+  due_ts: number | null
+  status: string
+  updated_at: number | null
+  synced_at: number | null
+  importance: number | null
+  importance_reason: string | null
 }
 
-export function insertWaMessage(args: {
+export function upsertTaskItem(item: {
   id: string
-  chatJid: string
-  senderJid?: string
-  senderName?: string
-  contentEnc: Uint8Array
-  contentIv: Uint8Array
-  contentTag: Uint8Array
-  isGroup?: boolean
-  isFromMe?: boolean
-  mediaKind?: string
-  ts?: number
+  listId?: string
+  title: string
+  notes?: string
+  dueTs?: number
+  status?: string
+  updatedAt?: number
+  syncedAt?: number
+  importance?: number
+  importanceReason?: string
 }): void {
   getDb()
     .prepare(
-      `INSERT INTO wa_messages (id, chat_jid, sender_jid, sender_name, content_enc, content_iv, content_tag, is_group, is_from_me, media_kind, ts)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO NOTHING`
+      `INSERT INTO tasks_items (id, list_id, title, notes, due_ts, status, updated_at, synced_at, importance, importance_reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         list_id=excluded.list_id,
+         title=excluded.title,
+         notes=excluded.notes,
+         due_ts=excluded.due_ts,
+         status=excluded.status,
+         updated_at=excluded.updated_at,
+         synced_at=excluded.synced_at,
+         importance=excluded.importance,
+         importance_reason=excluded.importance_reason`
     )
     .run(
-      args.id,
-      args.chatJid,
-      args.senderJid ?? null,
-      args.senderName ?? null,
-      args.contentEnc,
-      args.contentIv,
-      args.contentTag,
-      args.isGroup ? 1 : 0,
-      args.isFromMe ? 1 : 0,
-      args.mediaKind ?? null,
-      args.ts ?? null
+      item.id,
+      item.listId ?? '@default',
+      item.title,
+      item.notes ?? null,
+      item.dueTs ?? null,
+      item.status ?? 'needs_push',
+      item.updatedAt ?? Date.now(),
+      item.syncedAt ?? null,
+      item.importance ?? null,
+      item.importanceReason ?? null
     )
 }
 
-export function listWaMessagesSince(sinceMs: number, limit = 50): WaMessageRow[] {
+export function deleteTaskItem(id: string): void {
+  getDb().prepare(`DELETE FROM tasks_items WHERE id = ?`).run(id)
+}
+
+export function listTaskItems(status?: string, limit = 25): TaskItemRow[] {
+  if (status) {
+    return getDb()
+      .prepare(
+        `SELECT id, list_id, title, notes, due_ts, status, updated_at, synced_at, importance, importance_reason
+         FROM tasks_items WHERE status = ? ORDER BY COALESCE(due_ts, updated_at) ASC LIMIT ?`
+      )
+      .all(status, limit) as TaskItemRow[]
+  }
   return getDb()
     .prepare(
-      `SELECT id, chat_jid, sender_jid, sender_name, content_enc, content_iv, content_tag,
-              is_group, is_from_me, media_kind, ts, created_at
-       FROM wa_messages WHERE ts >= ? ORDER BY ts DESC LIMIT ?`
+      `SELECT id, list_id, title, notes, due_ts, status, updated_at, synced_at, importance, importance_reason
+       FROM tasks_items ORDER BY
+         CASE status WHEN 'needs_push' THEN 0 WHEN 'needs_sync' THEN 1 WHEN 'needsAction' THEN 2 ELSE 3 END,
+         COALESCE(due_ts, updated_at) ASC LIMIT ?`
     )
-    .all(sinceMs, limit) as WaMessageRow[]
+    .all(limit) as TaskItemRow[]
 }
 
-export function allowWaContact(jid: string, displayName?: string): void {
-  getDb()
-    .prepare(
-      `INSERT INTO wa_allowlist (jid, display_name) VALUES (?, ?)
-       ON CONFLICT(jid) DO UPDATE SET display_name=excluded.display_name`
-    )
-    .run(jid, displayName ?? null)
-}
-
-export function removeWaContact(jid: string): boolean {
-  return Number(getDb().prepare(`DELETE FROM wa_allowlist WHERE jid = ?`).run(jid).changes) > 0
-}
-
-export function listWaAllowlist(): Array<{ jid: string; display_name: string | null }> {
+export function pendingTaskItems(limit = 50): TaskItemRow[] {
   return getDb()
-    .prepare(`SELECT jid, display_name FROM wa_allowlist`)
-    .all() as Array<{ jid: string; display_name: string | null }>
-}
-
-export function isWaJidAllowed(jid: string): boolean {
-  const row = getDb().prepare(`SELECT 1 FROM wa_allowlist WHERE jid = ?`).get(jid)
-  return Boolean(row)
+    .prepare(
+      `SELECT id, list_id, title, notes, due_ts, status, updated_at, synced_at, importance, importance_reason
+       FROM tasks_items WHERE status IN ('needs_push', 'needs_sync')
+       ORDER BY updated_at ASC LIMIT ?`
+    )
+    .all(limit) as TaskItemRow[]
 }

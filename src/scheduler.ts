@@ -48,6 +48,8 @@ const BUILT_INS: BuiltIn[] = [
   { name: 'gmail-poll', mission: 'gmail-poll', schedule: '*/5 * * * *', priority: 2 },
   { name: 'gmail-classify', mission: 'gmail-classify', schedule: '*/7 * * * *', priority: 3 },
   { name: 'calendar-poll', mission: 'calendar-poll', schedule: '*/15 * * * *', priority: 2 },
+  { name: 'tasks-poll', mission: 'tasks-poll', schedule: '*/5 * * * *', priority: 2 },
+  { name: 'tasks-push', mission: 'tasks-push', schedule: '*/5 * * * *', priority: 3 },
 ]
 
 function nextRunFor(schedule: string, from = new Date()): number {

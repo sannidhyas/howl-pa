@@ -3,6 +3,7 @@ import { ALLOWED_CHAT_ID, SHOW_COST_FOOTER, TELEGRAM_BOT_TOKEN } from './config.
 import { logger } from './logger.js'
 import {
   executeEmergencyKill,
+  checkIdleLock,
   isLocked,
   isSecurityEnabled,
   lock,
@@ -13,13 +14,10 @@ import {
 import { redactSecrets, scanForSecrets } from './exfiltration-guard.js'
 import { runAgentWithRetry } from './agent.js'
 import {
-  allowWaContact,
   audit,
   deleteScheduledTask,
   latestSessionFor,
   listMissionTasks,
-  listWaAllowlist,
-  removeWaContact,
   setTaskStatus,
 } from './db.js'
 import { runMissionByName, scheduledTaskSummary } from './scheduler.js'
@@ -37,6 +35,8 @@ import { reindexVault } from './vault-indexer.js'
 import { mirrorThesis } from './thesis-mirror.js'
 import { routeCapture, type CaptureType } from './capture-router.js'
 import { computeNudges, formatNudgeHtml, todayFlags } from './evening-nudge.js'
+import { chatEvents } from './state.js'
+import { completeTask, pushPendingTasks, shortTaskId, taskRows } from './tasks.js'
 import {
   escapeHtml,
   formatMirrorResultHtml,
@@ -188,6 +188,38 @@ async function handleCommand(ctx: Context, text: string): Promise<boolean> {
       return await forcedCapture(ctx, text, 'idea', '/idea <text>')
     case '/task':
       return await forcedCapture(ctx, text, 'task', '/task <text>')
+    case '/task-add': {
+      const body = text.replace(/^\/task-add\s*/i, '').trim()
+      if (!body) {
+        await ctx.reply('usage: /task-add <text>')
+        return true
+      }
+      await routeAndReply(ctx, body, 'task')
+      const result = await pushPendingTasks()
+      if (result.pushed && result.pushed > 0) await ctx.reply(`synced ${result.pushed} Google Task${result.pushed > 1 ? 's' : ''}.`)
+      return true
+    }
+    case '/task-list': {
+      const rows = taskRows(20)
+      const lines = rows.length === 0
+        ? '<i>no tasks tracked</i>'
+        : rows.map(r => {
+            const due = r.due_ts ? new Date(r.due_ts).toLocaleDateString('en-IN') : 'no due'
+            return `• <code>${escapeHtml(shortTaskId(r.id))}</code> ${escapeHtml(r.title)} · <i>${escapeHtml(r.status)}</i> · ${escapeHtml(due)}`
+          }).join('\n')
+      await sendHtml(ctx, `<b>Google Tasks</b> · ${rows.length}\n${lines}`)
+      return true
+    }
+    case '/task-done': {
+      const id = parts[1]
+      if (!id) {
+        await ctx.reply('usage: /task-done <id>')
+        return true
+      }
+      const ok = await completeTask(id)
+      await ctx.reply(ok ? `completed ${id}` : `task not found: ${id}`)
+      return true
+    }
     case '/thesis':
       return await forcedCapture(ctx, text, 'thesis_fragment', '/thesis <text>')
     case '/literature':
@@ -267,45 +299,16 @@ async function handleCommand(ctx: Context, text: string): Promise<boolean> {
       }
       return true
     }
-    case '/wa-allow': {
-      const jid = parts[1]
-      const name = parts.slice(2).join(' ').trim() || undefined
-      if (!jid) {
-        await ctx.reply('usage: /wa-allow <jid> [display name]\njid format: <number>@s.whatsapp.net or <id>@g.us')
-        return true
-      }
-      allowWaContact(jid, name)
-      await ctx.reply(`✅ allowlisted ${jid}${name ? ` (${name})` : ''}`)
-      return true
-    }
-    case '/wa-remove': {
-      const jid = parts[1]
-      if (!jid) {
-        await ctx.reply('usage: /wa-remove <jid>')
-        return true
-      }
-      const ok = removeWaContact(jid)
-      await ctx.reply(ok ? `removed ${jid}` : `not in allowlist: ${jid}`)
-      return true
-    }
-    case '/wa-list': {
-      const rows = listWaAllowlist()
-      const body = rows.length === 0
-        ? '<i>no allowlisted contacts</i>'
-        : rows.map(r => `<code>${escapeHtml(r.jid)}</code>${r.display_name ? ` · ${escapeHtml(r.display_name)}` : ''}`).join('\n')
-      await sendHtml(ctx, `<b>WA allowlist</b> · ${rows.length}\n${body}`)
-      return true
-    }
     case '/help': {
       await sendHtml(
         ctx,
         [
           '<b>Howl PA commands</b>',
           '<code>/start</code> · <code>/status</code> · <code>/chatid</code> · <code>/newchat</code> · <code>/lock</code>',
-          '<code>/capture &lt;text&gt;</code> · <code>/note</code> · <code>/idea</code> · <code>/task</code> · <code>/thesis</code> · <code>/literature</code> · <code>/journal</code>',
+          '<code>/capture &lt;text&gt;</code> · <code>/note</code> · <code>/idea</code> · <code>/task</code> · <code>/task-add</code> · <code>/task-list</code> · <code>/task-done</code>',
+          '<code>/thesis</code> · <code>/literature</code> · <code>/journal</code>',
           '<code>/recall &lt;query&gt;</code> · <code>/reindex</code> · <code>/mirror-thesis [--force]</code>',
           '<code>/brief</code> · <code>/nudge</code> · <code>/schedule list|pause|resume|delete</code> · <code>/mission list|run</code>',
-          '<code>/wa-allow</code> · <code>/wa-remove</code> · <code>/wa-list</code>',
           '<code>/ask [backend] &lt;prompt&gt;</code> · <code>/council [aggregator] &lt;prompt&gt;</code> · <code>/backends</code>',
         ].join('\n')
       )
@@ -412,6 +415,11 @@ async function handleCommand(ctx: Context, text: string): Promise<boolean> {
   }
 }
 
+function commandAllowedWhileLocked(text: string): boolean {
+  const cmd = text.trim().split(/\s+/)[0]?.toLowerCase()
+  return cmd === '/start' || cmd === '/chatid' || cmd === '/status'
+}
+
 async function forcedCapture(
   ctx: Context,
   text: string,
@@ -469,12 +477,11 @@ async function sendHtml(ctx: Context, html: string): Promise<void> {
 
 async function handlePinAttempt(ctx: Context, text: string): Promise<boolean> {
   if (!isSecurityEnabled() || !isLocked()) return false
-  const chatId = String(ctx.chat!.id)
   const pin = text.trim()
-  if (!/^\d{4,12}$/.test(pin)) {
-    await ctx.reply('locked. send PIN (4-12 digits).')
-    return true
-  }
+  // Not a PIN attempt — defer to the locked-mode allowlist gate downstream
+  // so commands like /start and /status remain reachable while locked.
+  if (!/^\d{4,12}$/.test(pin)) return false
+  const chatId = String(ctx.chat!.id)
   if (unlock(pin, chatId)) {
     await ctx.reply('✅ unlocked.')
   } else {
@@ -493,9 +500,16 @@ async function handleKillPhraseCheck(ctx: Context, text: string): Promise<boolea
 
 async function processMessage(ctx: Context, text: string): Promise<void> {
   const chatId = String(ctx.chat!.id)
+  checkIdleLock()
   touchActivity()
 
   if (await handleKillPhraseCheck(ctx, text)) return
+  if (await handlePinAttempt(ctx, text)) return
+  if (isSecurityEnabled() && isLocked() && !commandAllowedWhileLocked(text)) {
+    audit('blocked', 'message while locked', { chatId, blocked: true })
+    await ctx.reply('locked. send PIN.')
+    return
+  }
 
   // Active survey takes precedence over command parsing — user can still
   // /cancel by typing `cancel` inside a survey.
@@ -515,12 +529,6 @@ async function processMessage(ctx: Context, text: string): Promise<void> {
     logger.error({ err, chatId, cmd: text.split(/\s+/)[0] }, 'command handler threw')
     await ctx.reply(`⚠️ command error: ${msg.slice(0, 400)}`).catch(() => {})
     audit('command', `error: ${msg.slice(0, 200)}`, { chatId, blocked: true })
-    return
-  }
-  if (await handlePinAttempt(ctx, text)) return
-  if (isSecurityEnabled() && isLocked()) {
-    audit('blocked', 'message while locked', { chatId, blocked: true })
-    await ctx.reply('locked. send PIN.')
     return
   }
 
@@ -550,11 +558,22 @@ async function processMessage(ctx: Context, text: string): Promise<void> {
 
   try {
     const previousSessionId = latestSessionFor(chatId) ?? undefined
+    const eventSessionId = previousSessionId ?? 'pending'
+    chatEvents.emit('message_received', { chatId, sessionId: eventSessionId, text })
+    chatEvents.emit('agent_started', {
+      chatId,
+      sessionId: eventSessionId,
+      agentId: 'main',
+      backend: 'claude',
+    })
     const result = await runAgentWithRetry({
       chatId,
       prompt: text,
       sessionId: previousSessionId,
     })
+    if (!previousSessionId) {
+      chatEvents.emit('session_start', { chatId, sessionId: result.sessionId, agentId: 'main' })
+    }
     const redacted = redactSecrets(result.text)
     if (redacted.matches.length > 0) {
       audit('exfil_redacted', `outbound blocked=${redacted.matches.map(m => m.type).join(',')}`, {
@@ -569,11 +588,23 @@ async function processMessage(ctx: Context, text: string): Promise<void> {
       })
     }
     audit('message', `agent reply ok (${result.durationMs}ms)`, { chatId })
+    chatEvents.emit('agent_completed', {
+      chatId,
+      sessionId: result.sessionId,
+      durationMs: result.durationMs,
+      tokens: result.inputTokens + result.outputTokens,
+      outcome: 'ok',
+    })
   } catch (err) {
     logger.error({ err, chatId }, 'agent run failed')
     const msg = err instanceof Error ? err.message : String(err)
     await ctx.reply(`⚠️ agent error: ${msg.slice(0, 400)}`).catch(() => {})
     audit('message', `agent error: ${msg.slice(0, 200)}`, { chatId })
+    chatEvents.emit('error', {
+      chatId,
+      category: 'agent',
+      message: msg.slice(0, 400),
+    })
   }
 }
 

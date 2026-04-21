@@ -2,6 +2,7 @@ import { query, type Options, type SDKMessage } from '@anthropic-ai/claude-agent
 import { logger } from './logger.js'
 import { writeJournal, writeLiterature, writeNote, writeTask, writeThesisFragment } from './vault-writer.js'
 import { runIdeaFlow } from './idea-flow.js'
+import { upsertTask } from './tasks.js'
 
 export type CaptureType =
   | 'note'
@@ -120,6 +121,7 @@ export async function routeCapture(text: string, forcedType?: CaptureType): Prom
     }
     case 'task': {
       const { vaultRel } = await writeTask(input)
+      await upsertTask({ title: text, notes: `Captured from Telegram. Vault: ${vaultRel}` })
       return { type: 'task', classification, vaultRel }
     }
     case 'literature': {

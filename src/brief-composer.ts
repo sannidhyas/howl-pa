@@ -13,9 +13,7 @@ import {
   googleAuthConfigured,
   googleTokenSaved,
 } from './google-auth.js'
-import { listWaAllowlist, listWaMessagesSince, type WaMessageRow } from './db.js'
-import { open as openSealed } from './wa-crypto.js'
-import { isWaReady } from './whatsapp.js'
+import { taskRows, shortTaskId } from './tasks.js'
 
 export type BriefSummary = {
   html: string
@@ -25,18 +23,6 @@ export type BriefSummary = {
 function fmtTime(ms: number | null): string {
   if (!ms) return '—'
   return new Date(ms).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false })
-}
-
-function decryptWa(row: WaMessageRow): string {
-  try {
-    return openSealed({
-      ciphertext: Buffer.from(row.content_enc),
-      iv: Buffer.from(row.content_iv),
-      tag: Buffer.from(row.content_tag),
-    })
-  } catch {
-    return '(decrypt failed)'
-  }
 }
 
 export async function composeMorningBrief(): Promise<BriefSummary> {
@@ -88,33 +74,13 @@ export async function composeMorningBrief(): Promise<BriefSummary> {
     gmailLines = ['<i>not configured — run `npm run setup:google`</i>']
   }
 
-  // WhatsApp
-  let waLines: string[]
-  if (isWaReady()) {
-    const allow = listWaAllowlist()
-    const allowJids = new Set(allow.map(a => a.jid))
-    const rows = listWaMessagesSince(lastDay, 100).filter(r => allowJids.has(r.sender_jid ?? r.chat_jid))
-    if (rows.length === 0) {
-      waLines = ['<i>no overnight messages from allowlist</i>']
-    } else {
-      const byContact = new Map<string, number>()
-      for (const r of rows) {
-        const key = r.sender_name ?? r.sender_jid ?? r.chat_jid
-        byContact.set(key, (byContact.get(key) ?? 0) + 1)
-      }
-      waLines = [...byContact.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 8)
-        .map(([name, n]) => `• <b>${escapeHtml(name)}</b> — ${n} msg${n > 1 ? 's' : ''}`)
-      // Show last message preview
-      const last = rows[0]
-      if (last) {
-        waLines.push(`<i>latest</i>: ${escapeHtml(decryptWa(last).slice(0, 120))}`)
-      }
-    }
-  } else {
-    waLines = ['<i>not configured — run `npx tsx scripts/setup-whatsapp.ts`</i>']
-  }
+  const tasks = taskRows(8).filter(t => t.status !== 'completed')
+  const taskLines = tasks.length === 0
+    ? ['<i>no open tasks tracked</i>']
+    : tasks.map(t => {
+        const due = t.due_ts ? ` · ${escapeHtml(new Date(t.due_ts).toLocaleDateString('en-IN'))}` : ''
+        return `• <code>${escapeHtml(shortTaskId(t.id))}</code> ${escapeHtml(t.title)}${due}`
+      })
 
   // Vault
   const inboxFiles = listVaultNotes('04_Notes/inbox')
@@ -145,8 +111,8 @@ export async function composeMorningBrief(): Promise<BriefSummary> {
     '<b>Inbox · priority · 24h</b>',
     ...gmailLines,
     '',
-    '<b>WhatsApp · allowlist · 24h</b>',
-    ...waLines,
+    '<b>Google Tasks · open</b>',
+    ...taskLines,
     '',
     `<b>Vault inbox (recent)</b> · ${recentInbox.length}`,
     ...recentInbox.map(p => `• <code>${escapeHtml(p)}</code>`),
@@ -165,7 +131,7 @@ export async function composeMorningBrief(): Promise<BriefSummary> {
     `- Required: ${required.join(', ')}`,
     `- Calendar: ${calendarLines.length === 1 && calendarLines[0]?.includes('not configured') ? 'n/a' : `${calendarLines.length} items`}`,
     `- Gmail priority: ${gmailLines.length === 1 && gmailLines[0]?.includes('not configured') ? 'n/a' : `${gmailLines.length} items`}`,
-    `- WhatsApp: ${waLines.length === 1 && waLines[0]?.includes('not configured') ? 'n/a' : `${waLines.length} threads`}`,
+    `- Google Tasks: ${tasks.length} open`,
     `- Vault inbox (${recentInbox.length}):`,
     ...recentInbox.map(p => `  - [[${p}]]`),
   ]

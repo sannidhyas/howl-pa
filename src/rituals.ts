@@ -9,6 +9,8 @@ import { clearSurvey, currentSurvey, startSurvey, advanceSurvey } from './conver
 import { vaultRelFrom } from './vault.js'
 import { escapeHtml } from './format-telegram.js'
 import { listParkedIdeas } from './idea-open.js'
+import { upsertTask } from './tasks.js'
+import { createCalendarBlock } from './calendar.js'
 
 const git = simpleGit(VAULT_PATH)
 
@@ -24,6 +26,10 @@ const MORNING_QUESTIONS = [
   {
     key: 'venture_artifact',
     prompt: 'Today\'s one tangible <b>venture artifact</b>? (skip with <code>skip</code>)',
+  },
+  {
+    key: 'needle_tasks',
+    prompt: 'What 3 things move the needle today? Send one per line. Add <code>block time</code> on a line if I should create a calendar block.',
   },
 ] as const
 
@@ -145,6 +151,8 @@ export async function handleSurveyReply(
       await appendToDailySection(today, 'Thesis artifact (one tangible thing)', `- ${raw}`)
     } else if (q.key === 'venture_artifact' && raw.toLowerCase() !== 'skip') {
       await appendToDailySection(today, 'Venture artifact (one tangible thing)', `- ${raw}`)
+    } else if (q.key === 'needle_tasks' && raw.toLowerCase() !== 'skip') {
+      await createNeedleTasks(today, raw)
     }
 
     const next = MORNING_QUESTIONS[survey.step]
@@ -250,4 +258,42 @@ export async function handleSurveyReply(
   }
 
   return false
+}
+
+async function createNeedleTasks(isoDate: string, raw: string): Promise<void> {
+  const lines = raw.split(/\n+/).map(l => l.trim()).filter(Boolean).slice(0, 3)
+  const due = dueAt(isoDate, 18, 0)
+  for (const [idx, line] of lines.entries()) {
+    const wantsBlock = /\bblock\s*time\b|\[block\]|\bblock:/i.test(line)
+    const title = line
+      .replace(/^\s*[-*]\s*(?:\[[ x]\]\s*)?/i, '')
+      .replace(/\bblock\s*time\b|\[block\]|\bblock:/ig, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (!title) continue
+    await appendToDailySection(isoDate, 'Focus (pick 1–3)', `- [ ] ${title}`)
+    await upsertTask({
+      title,
+      notes: `Howl PA morning needle task. Daily note: 03_Daily/${isoDate}.md`,
+      due,
+      importance: 80,
+      importanceReason: 'morning needle task',
+    })
+    if (wantsBlock) {
+      const start = dueAt(isoDate, 15 + idx, 0)
+      const end = new Date(start.getTime() + 45 * 60_000)
+      await createCalendarBlock({
+        summary: `Needle: ${title}`,
+        startsAt: start,
+        endsAt: end,
+        description: `Created from Howl PA morning ritual. Due by ${due.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false })}.`,
+      })
+    }
+  }
+}
+
+function dueAt(isoDate: string, hour: number, minute: number): Date {
+  const d = new Date(`${isoDate}T00:00:00`)
+  d.setHours(hour, minute, 0, 0)
+  return d
 }
