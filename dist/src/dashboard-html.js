@@ -1719,7 +1719,12 @@ export function dashboardHtml(token) {
     async function loadMemoryScopes(){
       try {
         const r = await getJson('/api/memory/scopes');
-        memoryScopes = r.scopes || r.rows || [];
+        const raw = r.scopes || r.rows || [];
+        memoryScopes = raw.map(s => ({
+          id: s.id ?? s.scope,
+          label: s.label ?? (s.id ?? s.scope),
+          description: s.description ?? '',
+        }));
         if (!activeMemoryScope && memoryScopes.length) activeMemoryScope = memoryScopes[0].id;
         renderScopeFilter();
       } catch (e) {
@@ -1851,7 +1856,10 @@ export function dashboardHtml(token) {
         },
       });
     }
-    document.getElementById('memories-new').addEventListener('click', () => openMemoryModal(null));
+    document.getElementById('memories-new').addEventListener('click', async () => {
+      if (!memoryScopes.length) await loadMemoryScopes();
+      openMemoryModal(null);
+    });
     document.getElementById('memories-refresh').addEventListener('click', () => loadMemories());
 
     // ───── usage ─────
