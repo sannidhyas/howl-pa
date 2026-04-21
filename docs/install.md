@@ -18,10 +18,14 @@ Two install paths. They compose — most users want both.
 
 ## Install — npm path
 
+Published npm package (`npm i -g howl-pa`) is pending owner's `npm publish`. Until then install directly from GitHub:
+
 ```sh
-npm i -g howl-pa
+npm i -g github:sannidhyas/howl-pa
 howl-pa setup
 ```
+
+npm will clone the repo, install devDeps, and run the `prepare` script which compiles `dist/` locally. `howl-pa` becomes available on your PATH.
 
 The setup wizard prompts for:
 

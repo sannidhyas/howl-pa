@@ -53,6 +53,7 @@
     "setup:google": "tsx scripts/setup-google.ts",
     "health": "tsx scripts/health.ts",
     "typecheck": "tsc -p . --noEmit",
+    "prepare": "tsc -p .",
     "prepublishOnly": "npm run typecheck && npm run build"
   },
   "dependencies": {
