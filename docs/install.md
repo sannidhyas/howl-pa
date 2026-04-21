@@ -21,7 +21,7 @@ Two install paths. They compose — most users want both.
 Published npm package (`npm i -g howl-pa`) is pending owner's `npm publish`. Until then install the release tarball:
 
 ```sh
-npm i -g https://github.com/sannidhyas/howl-pa/releases/download/v0.0.5/howl-pa-0.0.5.tgz
+npm i -g https://github.com/sannidhyas/howl-pa/releases/latest/download/howl-pa.tgz
 howl-pa setup
 ```
 

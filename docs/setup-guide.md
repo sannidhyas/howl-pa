@@ -77,7 +77,7 @@ The installer walks you through consent and persists the refresh token. You do *
 ## 4. Run the installer
 
 ```sh
-npm i -g https://github.com/sannidhyas/howl-pa/releases/download/v0.0.5/howl-pa-0.0.5.tgz
+npm i -g https://github.com/sannidhyas/howl-pa/releases/latest/download/howl-pa.tgz
 howl-pa setup
 ```
 
