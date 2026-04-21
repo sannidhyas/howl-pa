@@ -12,21 +12,24 @@ const UNIT_FILE = join(homedir(), '.config', 'systemd', 'user', SERVICE_NAME)
 type Args = {
   yes: boolean
   keepBackup: boolean
+  withDataBackup: boolean
 }
 
 function usage(): never {
-  console.error('Usage: howl-pa reset [--yes] [--keep-backup]')
+  console.error('Usage: howl-pa reset [--yes] [--keep-backup|--skip-backup] [--with-data-backup]')
   process.exit(1)
 }
 
 function parseArgs(argv: string[]): Args {
-  const parsed: Args = { yes: false, keepBackup: false }
+  const parsed: Args = { yes: false, keepBackup: false, withDataBackup: false }
 
   for (const arg of argv) {
     if (arg === '--yes') {
       parsed.yes = true
-    } else if (arg === '--keep-backup') {
+    } else if (arg === '--keep-backup' || arg === '--skip-backup') {
       parsed.keepBackup = true
+    } else if (arg === '--with-data-backup') {
+      parsed.withDataBackup = true
     } else {
       usage()
     }
@@ -72,13 +75,14 @@ async function confirmReset(yes: boolean): Promise<void> {
   }
 }
 
-function runBackup(): string {
+function runBackup(withData: boolean): string {
   const expectedBackupPath = defaultBackupPath()
   const backupScriptPath = fileURLToPath(new URL('./backup.js', import.meta.url))
-  const result = spawnSync(process.execPath, [backupScriptPath], { stdio: 'inherit' })
+  const backupArgs = withData ? [backupScriptPath, '--with-data'] : [backupScriptPath]
+  const result = spawnSync(process.execPath, backupArgs, { stdio: 'inherit' })
   if (result.status !== 0) {
     if (result.error) console.error(result.error.message)
-    console.error('Backup failed; reset aborted. Pass --keep-backup to reset without a backup.')
+    console.error('Backup failed; reset aborted. Pass --keep-backup or --skip-backup to reset without a backup.')
     process.exit(result.status ?? 1)
   }
   console.log('Backup complete.')
@@ -111,7 +115,7 @@ async function main(): Promise<void> {
   await confirmReset(args.yes)
 
   const configDir = resolveConfigDir()
-  const backupPath = args.keepBackup ? 'skipped (--keep-backup)' : runBackup()
+  const backupPath = args.keepBackup ? 'skipped (--keep-backup/--skip-backup)' : runBackup(args.withDataBackup)
 
   stopDaemonIfActive()
   resetFiles(configDir)
