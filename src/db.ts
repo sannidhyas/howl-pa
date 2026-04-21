@@ -482,9 +482,12 @@ export type AuditEventType =
   | 'exfil_redacted'
   | 'capture'
   | 'scheduler_run_now'
+  | 'scheduler_create'
+  | 'scheduler_edit'
   | 'scheduler_pause'
   | 'scheduler_resume'
   | 'scheduler_delete'
+  | 'mission_adhoc'
   | 'mission_retry'
   | 'mission_cancel'
   | 'mission_done'
@@ -749,6 +752,49 @@ export function markTaskRan(args: {
 
 export function setTaskStatus(name: string, status: ScheduledTaskStatus): boolean {
   const info = getDb().prepare(`UPDATE scheduled_tasks SET status = ? WHERE name = ?`).run(status, name)
+  return info.changes > 0
+}
+
+export function updateScheduledFields(
+  name: string,
+  patch: {
+    schedule?: string
+    nextRun?: number
+    priority?: number
+    args?: string
+    status?: ScheduledTaskStatus
+  }
+): boolean {
+  const sets: string[] = []
+  const values: unknown[] = []
+
+  if (patch.schedule !== undefined) {
+    sets.push('schedule = ?')
+    values.push(patch.schedule)
+  }
+  if (patch.nextRun !== undefined) {
+    sets.push('next_run = ?')
+    values.push(patch.nextRun)
+  }
+  if (patch.priority !== undefined) {
+    sets.push('priority = ?')
+    values.push(patch.priority)
+  }
+  if (patch.args !== undefined) {
+    sets.push('args = ?')
+    values.push(patch.args)
+  }
+  if (patch.status !== undefined) {
+    sets.push('status = ?')
+    values.push(patch.status)
+  }
+
+  if (sets.length === 0) return false
+
+  values.push(name)
+  const info = getDb()
+    .prepare(`UPDATE scheduled_tasks SET ${sets.join(', ')} WHERE name = ?`)
+    .run(...(values as never[]))
   return info.changes > 0
 }
 

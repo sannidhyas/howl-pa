@@ -57,7 +57,7 @@ export const BUILT_INS: BuiltIn[] = [
   { name: 'tasks-push', mission: 'tasks-push', schedule: '*/5 * * * *', description: 'Pushes locally-captured tasks back to Google Tasks via the API', priority: 3 },
 ]
 
-function nextRunFor(schedule: string, from = new Date()): number {
+export function nextRunFor(schedule: string, from = new Date()): number {
   return parseExpression(schedule, { currentDate: from }).next().getTime()
 }
 
