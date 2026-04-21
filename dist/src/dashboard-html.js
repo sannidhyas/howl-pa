@@ -693,6 +693,83 @@ export function dashboardHtml(token) {
     .help-card dt { font-family: var(--mono); color: var(--accent); }
     .help-card dd { margin: 0; color: var(--fg-muted); }
 
+    /* Transcript drawer */
+    .drawer {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: min(520px, 92vw);
+      background: var(--bg-1);
+      border-left: 1px solid var(--border-strong);
+      box-shadow: -8px 0 24px rgba(0,0,0,.4);
+      z-index: 80;
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform .22s var(--ease);
+    }
+    .drawer.open { transform: translateX(0); }
+    .drawer .head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .drawer .head h3 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--fg);
+      letter-spacing: .04em;
+    }
+    .drawer .head .meta {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: var(--fg-dim);
+    }
+    .drawer .body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 18px;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .drawer .body pre {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--fg-muted);
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 0 0 14px 0;
+      max-height: none;
+    }
+    .drawer .turn {
+      margin-bottom: 14px;
+    }
+    .drawer .turn .role {
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--fg-dim);
+      margin-bottom: 3px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .drawer .turn.user .role { color: var(--accent); }
+    .drawer .turn.assistant .role { color: var(--violet); }
+
+    tr.clickable { cursor: pointer; }
+    tr.clickable:hover td:first-child::before {
+      content: '↳ ';
+      color: var(--accent);
+      margin-left: -14px;
+    }
+
     /* Inline confirmation */
     .confirm {
       display: flex;
@@ -842,6 +919,16 @@ export function dashboardHtml(token) {
 
   <div class="toasts" id="toasts"></div>
 
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <div class="head">
+      <h3 id="drawer-title">Transcript</h3>
+      <span class="meta" id="drawer-meta"></span>
+      <div style="flex:1"></div>
+      <button class="btn ghost" id="drawer-close" aria-label="Close">✕</button>
+    </div>
+    <div class="body" id="drawer-body"></div>
+  </aside>
+
   <div class="help-overlay" id="help-overlay">
     <div class="help-card">
       <h2>Keyboard shortcuts</h2>
@@ -947,6 +1034,7 @@ export function dashboardHtml(token) {
       heartbeat: null,
       schedRows: [],
       missionRows: [],
+      tokenRows: [],
       search: '',
       routineFilter: 'all',
       feedFilter: 'all',
@@ -956,6 +1044,7 @@ export function dashboardHtml(token) {
       tokensToday: 0,
       lastActivity: null,
       loadedTabs: new Set(['pulse']),
+      drawerTarget: null,
     };
 
     // ───── health + pulse ─────
@@ -1193,7 +1282,7 @@ export function dashboardHtml(token) {
           ? \`<button class="btn ghost" data-mission-action="retry" data-id="\${r.id}">↻ Retry</button>\`
           : '';
       return \`
-        <div class="mission">
+        <div class="mission" data-mission-id="\${r.id}">
           <div class="title">\${escapeHtml(r.title)}</div>
           <div class="meta">
             <span class="pill \${escapeHtml(r.status)}">\${escapeHtml(r.status)}</span>
@@ -1202,7 +1291,10 @@ export function dashboardHtml(token) {
             <span>\${escapeHtml(fmtRel(r.started_at || r.created_at))}</span>
           </div>
           \${r.result ? \`<div class="result-preview">\${escapeHtml(String(r.result).slice(0, 220))}</div>\` : ''}
-          <div class="mission-actions">\${actions}</div>
+          <div class="mission-actions">
+            <button class="btn ghost" data-mission-action="open" data-id="\${r.id}">Open</button>
+            \${actions}
+          </div>
         </div>
       \`;
     }
@@ -1210,6 +1302,10 @@ export function dashboardHtml(token) {
       const btn = ev.currentTarget;
       const id = btn.dataset.id;
       const action = btn.dataset.missionAction;
+      if (action === 'open') {
+        await showTranscript('mission_task', id);
+        return;
+      }
       btn.disabled = true;
       const original = btn.innerHTML;
       btn.innerHTML = '<span class="spinner"></span>';
@@ -1415,15 +1511,24 @@ export function dashboardHtml(token) {
       try {
         const { rows } = await getJson('/api/audit');
         if (!rows.length) { wrap.innerHTML = '<div class="empty"><div class="icon">☷</div><div class="msg">Audit log empty</div></div>'; return; }
-        wrap.innerHTML = '<table><thead><tr><th>When</th><th>Event</th><th>Detail</th><th>Blocked</th><th>Chat</th><th>Agent</th></tr></thead><tbody>' +
-          rows.map(r =>
-            '<tr><td class="mono muted">' + escapeHtml(fmtRel(r.created_at)) + '</td>' +
-            '<td><span class="pill ' + (r.blocked ? 'failed' : '') + '">' + escapeHtml(r.event_type) + '</span></td>' +
-            '<td class="truncate">' + escapeHtml(r.detail || '') + '</td>' +
-            '<td>' + (r.blocked ? '<span class="pill failed">yes</span>' : '<span class="muted">no</span>') + '</td>' +
-            '<td class="mono muted">' + escapeHtml(r.chat_id || '—') + '</td>' +
-            '<td class="mono">' + escapeHtml(r.agent_id) + '</td></tr>'
-          ).join('') + '</tbody></table>';
+        wrap.innerHTML = '<table><thead><tr><th>When</th><th>Event</th><th>Detail</th><th>Blocked</th><th>Chat</th><th>Agent</th><th></th></tr></thead><tbody>' +
+          rows.map(r => {
+            const hasRef = r.ref_kind && r.ref_id;
+            const opener = hasRef ? 'clickable' : '';
+            const refAttrs = hasRef ? ' data-ref-kind="' + escapeHtml(r.ref_kind) + '" data-ref-id="' + escapeHtml(String(r.ref_id)) + '"' : '';
+            const hint = hasRef ? '<span class="muted">open ↗</span>' : '';
+            return '<tr class="' + opener + '"' + refAttrs + '>' +
+              '<td class="mono muted">' + escapeHtml(fmtRel(r.created_at)) + '</td>' +
+              '<td><span class="pill ' + (r.blocked ? 'failed' : '') + '">' + escapeHtml(r.event_type) + '</span></td>' +
+              '<td class="truncate">' + escapeHtml(r.detail || '') + '</td>' +
+              '<td>' + (r.blocked ? '<span class="pill failed">yes</span>' : '<span class="muted">no</span>') + '</td>' +
+              '<td class="mono muted">' + escapeHtml(r.chat_id || '—') + '</td>' +
+              '<td class="mono">' + escapeHtml(r.agent_id) + '</td>' +
+              '<td class="mono right">' + hint + '</td></tr>';
+          }).join('') + '</tbody></table>';
+        wrap.querySelectorAll('tr.clickable').forEach(tr => {
+          tr.addEventListener('click', () => showTranscript(tr.dataset.refKind, tr.dataset.refId));
+        });
       } catch (e) {
         wrap.innerHTML = '<div class="empty"><div class="icon">⚠</div><div class="msg">' + escapeHtml(e.message) + '</div></div>';
       }
@@ -1441,7 +1546,7 @@ export function dashboardHtml(token) {
 
     // ───── tab switcher ─────
     const TABS = {
-      pulse: async () => { await Promise.all([loadRoutines(), loadMissions(), renderPulse(), renderRecentActivity()]); },
+      pulse: async () => { await globalPoll(); },
       routines: loadRoutines,
       missions: loadMissions,
       feed: () => { ensureFeed(); renderFeed(); },
@@ -1508,6 +1613,137 @@ export function dashboardHtml(token) {
       if (ev.target.id === 'help-overlay') toggleHelp(false);
     });
 
+    // ───── global poll (keeps pulse + badges fresh regardless of active tab) ─────
+    async function globalPoll(){
+      try {
+        const [sched, missions, tokens] = await Promise.all([
+          getJson('/api/scheduler').catch(()=>({rows: state.schedRows})),
+          getJson('/api/missions').catch(()=>({rows: state.missionRows})),
+          getJson('/api/tokens').catch(()=>({today: state.tokensToday, recent: state.tokenRows, byBackend: []})),
+        ]);
+        state.schedRows = sched.rows;
+        state.missionRows = missions.rows;
+        state.tokensToday = tokens.today || 0;
+        state.tokenRows = tokens.recent || [];
+        renderPulseStrip(tokens.byBackend);
+        updateTabCounts();
+        const active = document.querySelector('nav.tabs button.active')?.dataset?.tab;
+        if (active === 'routines') renderRoutines();
+        if (active === 'missions') renderMissions();
+        if (active === 'pulse') renderRecentTable();
+      } catch {}
+    }
+
+    function renderPulseStrip(byBackend){
+      const pulse = document.getElementById('pulse');
+      const activeSched = state.schedRows.filter(r => r.status === 'active').length;
+      const pausedSched = state.schedRows.filter(r => r.status === 'paused').length;
+      const runningMissions = state.missionRows.filter(r => r.status === 'running' || r.status === 'queued').length;
+      const last10m = Date.now() - 10 * 60 * 1000;
+      state.errorsWindow = state.errorsWindow.filter(t => t > last10m);
+      const errors = state.errorsWindow.length;
+      const h = state.heartbeat;
+      const up = h ? Math.floor(h.uptime_s / 60) : 0;
+      pulse.innerHTML = '';
+      const addCell = (cls, label, value, sub) => {
+        const c = document.createElement('div');
+        c.className = 'pulse-cell ' + cls;
+        c.innerHTML = '<div class="label">' + escapeHtml(label) + '</div><div class="value">' + escapeHtml(value) + '</div><div class="sub">' + escapeHtml(sub || '') + '</div>';
+        pulse.appendChild(c);
+      };
+      addCell(h ? 'ok' : 'danger', 'status', h ? 'online' : 'offline', h ? (up < 60 ? up + 'm uptime' : (up/60).toFixed(1) + 'h uptime') : 'daemon unreachable');
+      addCell('info', 'routines', activeSched + ' active', pausedSched ? pausedSched + ' paused' : 'all firing');
+      addCell(runningMissions ? 'warn' : 'ok', 'queue', String(runningMissions), runningMissions ? 'in flight' : 'idle');
+      addCell(errors ? 'danger' : 'ok', 'errors 10m', String(errors), errors ? 'needs attention' : 'clean');
+      addCell('info', 'tokens 24h', compactNum(state.tokensToday), (byBackend && byBackend.length) ? byBackend.length + ' backends' : '');
+      addCell('ok', 'last activity', state.lastActivity ? fmtRel(state.lastActivity) : '—', state.lastActivity ? fmtClock(state.lastActivity) : 'no events yet');
+    }
+
+    function renderRecentTable(){
+      const wrap = document.getElementById('recent-activity');
+      if (!state.tokenRows.length) {
+        wrap.innerHTML = '<div class="empty"><div class="icon">○</div><div class="msg">No agent runs yet</div><div class="hint">DM the bot on Telegram — activity will land here.</div></div>';
+        return;
+      }
+      const headers = ['When','Backend','Model','In','Out','Duration'];
+      wrap.innerHTML = '<table><thead><tr>' + headers.map(h=>'<th>'+h+'</th>').join('') + '</tr></thead><tbody>' +
+        state.tokenRows.map(r =>
+          '<tr><td class="mono muted">' + escapeHtml(fmtRel(r.created_at)) + '</td>' +
+          '<td>' + escapeHtml(r.backend) + '</td>' +
+          '<td class="mono muted">' + escapeHtml(r.model || '—') + '</td>' +
+          '<td class="right mono">' + escapeHtml(String(r.input_tokens)) + '</td>' +
+          '<td class="right mono">' + escapeHtml(String(r.output_tokens)) + '</td>' +
+          '<td class="right mono muted">' + escapeHtml(fmtDuration(r.duration_ms)) + '</td></tr>'
+        ).join('') +
+        '</tbody></table>';
+    }
+
+    // ───── transcript drawer ─────
+    const drawerEl = document.getElementById('drawer');
+    document.getElementById('drawer-close').addEventListener('click', () => closeDrawer());
+    function openDrawer(){ drawerEl.classList.add('open'); drawerEl.setAttribute('aria-hidden','false'); }
+    function closeDrawer(){ drawerEl.classList.remove('open'); drawerEl.setAttribute('aria-hidden','true'); state.drawerTarget = null; }
+    async function showTranscript(kind, id){
+      if (!kind || id == null) { toast('No transcript linked to this row', 'info'); return; }
+      state.drawerTarget = { kind, id };
+      document.getElementById('drawer-title').textContent = kind === 'mission_task' ? 'Mission transcript' : 'Chat transcript';
+      document.getElementById('drawer-meta').textContent = kind + ' · ' + id;
+      const body = document.getElementById('drawer-body');
+      body.innerHTML = '<div class="skeleton" style="height:120px"></div>';
+      openDrawer();
+      try {
+        const r = await getJson('/api/transcript?kind=' + encodeURIComponent(kind) + '&id=' + encodeURIComponent(id));
+        if (!r.ok) throw new Error(r.error || 'not found');
+        body.innerHTML = renderTranscript(r);
+      } catch (e) {
+        body.innerHTML = '<div class="empty"><div class="icon">⚠</div><div class="msg">' + escapeHtml(e.message) + '</div></div>';
+      }
+    }
+    function renderTranscript(r){
+      if (r.kind === 'mission_task' && r.row) {
+        const row = r.row;
+        const meta = 'mission: ' + escapeHtml(row.mission || '—')
+          + ' · agent: ' + escapeHtml(row.assigned_agent || '—')
+          + ' · status: ' + escapeHtml(row.status)
+          + ' · started: ' + escapeHtml(fmtTs(row.started_at))
+          + ' · completed: ' + escapeHtml(fmtTs(row.completed_at));
+        const title = row.title ? '<h4 style="margin:0 0 8px 0;font-size:13.5px">' + escapeHtml(row.title) + '</h4>' : '';
+        const src = row.source ? '<div class="muted" style="font-size:11.5px;margin-bottom:10px">source: ' + escapeHtml(row.source) + (row.scheduled_task_id ? ' · scheduled #' + row.scheduled_task_id : '') + '</div>' : '';
+        const result = '<pre>' + escapeHtml(row.result || '(no result body)') + '</pre>';
+        return title + src + '<div class="muted" style="font-size:11.5px;margin-bottom:10px">' + meta + '</div>' + result;
+      }
+      if (r.kind === 'conversation' && r.rows) {
+        if (!r.rows.length) return '<div class="empty"><div class="msg">No turns in this session yet</div></div>';
+        return r.rows.map(t => {
+          const cls = t.role === 'user' ? 'turn user' : 'turn assistant';
+          return '<div class="' + cls + '"><div class="role">' + escapeHtml(t.role) + ' · ' + escapeHtml(fmtRel(t.created_at)) + '</div><pre>' + escapeHtml(t.content || '') + '</pre></div>';
+        }).join('');
+      }
+      return '<div class="empty"><div class="msg">Nothing to show</div></div>';
+    }
+
+    // ───── feed test + connection indicator ─────
+    document.getElementById('feed-list').insertAdjacentHTML('beforebegin', '');
+    async function sendTestEvent(){
+      try {
+        await postJson('/api/events/test', {});
+        toast('Test event fired', 'ok');
+      } catch (e) {
+        toast('Test failed: ' + e.message, 'err');
+      }
+    }
+
+    // wire up feed toolbar — add Test button once at init
+    (() => {
+      const clearBtn = document.getElementById('feed-clear');
+      const testBtn = document.createElement('button');
+      testBtn.className = 'btn ghost';
+      testBtn.textContent = '⚡ Test';
+      testBtn.title = 'Emit a synthetic chat_error to verify the live pipeline';
+      testBtn.addEventListener('click', sendTestEvent);
+      clearBtn.parentElement.insertBefore(testBtn, clearBtn);
+    })();
+
     // ───── boot ─────
     async function boot(){
       const hash = location.hash.replace('#','');
@@ -1515,13 +1751,12 @@ export function dashboardHtml(token) {
       else switchTab('pulse');
       await pollHeartbeat();
       setInterval(pollHeartbeat, 5000);
-      setInterval(() => {
-        const active = document.querySelector('nav.tabs button.active')?.dataset?.tab;
-        if (!active || active === 'feed') return;
-        (TABS[active] || (() => {}))();
-      }, 12_000);
+      await globalPoll();
+      setInterval(globalPoll, 5000);
       ensureFeed();
-      setInterval(renderPulse, 8000);
+      window.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape' && drawerEl.classList.contains('open')) closeDrawer();
+      });
     }
     boot();
   </script>
