@@ -5,7 +5,7 @@ export type ChatEventName =
   | 'message_received'
   | 'agent_started'
   | 'agent_completed'
-  | 'error'
+  | 'chat_error'
   | 'session_end'
 
 export type ChatEventPayload = {
@@ -19,7 +19,7 @@ export type ChatEventPayload = {
     tokens?: number
     outcome: 'ok' | 'error' | 'timeout'
   }
-  error: { chatId?: string; sessionId?: string; category: string; message: string }
+  chat_error: { chatId?: string; sessionId?: string; category: string; message: string }
   session_end: { chatId: string; sessionId: string; reason: string }
 }
 

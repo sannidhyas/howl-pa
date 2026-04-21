@@ -85,7 +85,12 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
             const firstModel = Object.keys(message.modelUsage)[0]
             if (firstModel) result.model = firstModel
           } else {
-            throw new Error(`agent run failed: ${message.subtype}`)
+            const errMsg = (message as { errors?: string[] }).errors?.join('; ') ?? ''
+            logger.error(
+              { message, chatId: input.chatId, agentId },
+              'claude agent SDK returned non-success result'
+            )
+            throw new Error(`agent run failed: ${message.subtype}${errMsg ? ` — ${errMsg}` : ''}`)
           }
           break
       }

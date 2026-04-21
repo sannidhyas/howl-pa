@@ -600,7 +600,7 @@ async function processMessage(ctx: Context, text: string): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err)
     await ctx.reply(`⚠️ agent error: ${msg.slice(0, 400)}`).catch(() => {})
     audit('message', `agent error: ${msg.slice(0, 200)}`, { chatId })
-    chatEvents.emit('error', {
+    chatEvents.emit('chat_error', {
       chatId,
       category: 'agent',
       message: msg.slice(0, 400),
