@@ -21,6 +21,10 @@ import { computeNudges, formatNudgeHtml, todayFlags } from './evening-nudge.js';
 import { chatEvents } from './state.js';
 import { completeTask, pushPendingTasks, shortTaskId, taskRows } from './tasks.js';
 import { escapeHtml, formatMirrorResultHtml, formatRecallHtml, formatReindexResultHtml, } from './format-telegram.js';
+import { createRoutine, editRoutine } from './scheduler-ops.js';
+import { cancelMission, retryMission } from './mission-ops.js';
+import { buildWelcomeHtml, buildWelcomeKeyboard } from './welcome.js';
+import { googleAuthConfigured, googleTokenSaved } from './google-auth.js';
 const MAX_TELEGRAM_TEXT = 4096;
 const ROUTINE_GROUPS = [
     { title: 'Daily', names: ['morning-brief', 'morning-ritual', 'evening-nudge', 'evening-tracker'] },
@@ -44,6 +48,28 @@ function routinesHtml() {
         return `<b>${group.title}</b>\n${lines}`;
     });
     return `<b>Built-in routines</b>\n\n${sections.join('\n\n')}\n\nPause/resume: <code>/schedule pause &lt;name&gt;</code>, <code>/schedule resume &lt;name&gt;</code>\nRun now: <code>/mission run &lt;name&gt;</code>`;
+}
+// Parse: /schedule add <name> "<cron>" <mission> [json-args...]
+function parseScheduleAdd(rawText) {
+    // strip /schedule add prefix
+    const rest = rawText.replace(/^\/schedule\s+add\s+/i, '').trim();
+    const nameMatch = rest.match(/^([a-z0-9_-]{1,64})\s+/);
+    if (!nameMatch?.[1])
+        return null;
+    const name = nameMatch[1];
+    const afterName = rest.slice(nameMatch[0].length);
+    // quoted cron
+    const cronMatch = afterName.match(/^"([^"]+)"\s*/);
+    if (!cronMatch?.[1])
+        return null;
+    const cron = cronMatch[1];
+    const afterCron = afterName.slice(cronMatch[0].length).trim();
+    const parts2 = afterCron.split(/\s+/);
+    const mission = parts2[0];
+    if (!mission)
+        return null;
+    const argsJson = parts2.slice(1).join(' ').trim() || undefined;
+    return { name, cron, mission, argsJson };
 }
 const queues = new Map();
 const processing = new Set();
@@ -121,10 +147,11 @@ async function handleCommand(ctx, text) {
     const cmd = parts[0]?.toLowerCase();
     switch (cmd) {
         case '/start':
-            await ctx.reply(`Howl PA is online.\n\n` +
-                (isSecurityEnabled() && isLocked()
-                    ? `Locked. DM your PIN to unlock.`
-                    : `Ready. Send a message to begin.`));
+            await ctx.reply(buildWelcomeHtml(), {
+                parse_mode: 'HTML',
+                reply_markup: buildWelcomeKeyboard(),
+                link_preview_options: { is_disabled: true },
+            });
             return true;
         case '/chatid':
             await ctx.reply(`chat_id: \`${chatId}\``, { parse_mode: 'MarkdownV2' }).catch(() => ctx.reply(`chat_id: ${chatId}`));
@@ -237,11 +264,99 @@ async function handleCommand(ctx, text) {
             await sendHtml(ctx, formatNudgeHtml(computeNudges(flags)));
             return true;
         }
+        case '/health': {
+            const upSec = Math.floor(process.uptime());
+            const upStr = upSec < 60 ? `${upSec}s` : upSec < 3600 ? `${Math.floor(upSec / 60)}m` : `${Math.floor(upSec / 3600)}h${Math.floor((upSec % 3600) / 60)}m`;
+            const tasks = listScheduledTasks();
+            const active = tasks.filter(t => t.status === 'active').length;
+            const paused = tasks.filter(t => t.status === 'paused').length;
+            const running = listMissionTasks('running', 5).length;
+            const queued = listMissionTasks('queued', 20).length;
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            const failed = listMissionTasks('failed', 50).filter(t => (t.created_at ?? 0) >= todayStart.getTime()).length;
+            const gConfigured = googleAuthConfigured();
+            const gToken = googleTokenSaved();
+            // Ollama probe — HEAD /api/tags, 2s timeout
+            let ollamaOk = false;
+            try {
+                const ollamaUrl = process.env.OLLAMA_URL ?? 'http://localhost:11434';
+                const controller = new AbortController();
+                const tId = setTimeout(() => controller.abort(), 2000);
+                const res = await fetch(`${ollamaUrl}/api/tags`, { signal: controller.signal, method: 'HEAD' });
+                clearTimeout(tId);
+                ollamaOk = res.ok || res.status < 500;
+            }
+            catch {
+                ollamaOk = false;
+            }
+            const { getDb } = await import('./db.js');
+            const lastErr = getDb().prepare(`SELECT event_type, detail, created_at FROM audit_log WHERE blocked = 1 OR event_type LIKE '%error%' OR event_type LIKE '%failed%' ORDER BY id DESC LIMIT 1`).get();
+            const errLine = lastErr
+                ? `last error: ${escapeHtml(lastErr.event_type)} — ${escapeHtml((lastErr.detail ?? '').slice(0, 60))} (${new Date(lastErr.created_at).toISOString().slice(11, 19)})`
+                : 'no recent errors';
+            const html = [
+                `<b>Howl PA health</b>`,
+                `uptime: ${upStr} · pid: ${process.pid}`,
+                `routines: ${active} active · ${paused} paused`,
+                `missions: ${running} running · ${queued} queued · ${failed} failed today`,
+                `google auth: ${gConfigured ? '✔' : '✘'} configured · token: ${gToken ? '✔' : '✘'} saved`,
+                `ollama: ${ollamaOk ? '✔' : '✘'}`,
+                errLine,
+            ].join('\n');
+            await sendHtml(ctx, `<pre>${html}</pre>`);
+            return true;
+        }
         case '/schedule': {
             const sub = parts[1]?.toLowerCase();
             if (!sub || sub === 'list') {
                 const rows = scheduledTaskSummary();
                 await sendHtml(ctx, `<b>Scheduled tasks</b>\n${rows.map(r => `<code>${escapeHtml(r)}</code>`).join('\n') || '<i>none</i>'}`);
+                return true;
+            }
+            if (sub === 'add') {
+                const rawText = ctx.message?.text ?? text;
+                const parsed = parseScheduleAdd(rawText);
+                if (!parsed) {
+                    await ctx.reply('⚠ usage: /schedule add <name> "<cron>" <mission> [{"key":"val"}]');
+                    return true;
+                }
+                let args;
+                if (parsed.argsJson) {
+                    try {
+                        args = JSON.parse(parsed.argsJson);
+                    }
+                    catch {
+                        await ctx.reply('⚠ invalid JSON args');
+                        return true;
+                    }
+                }
+                const result = await createRoutine({
+                    name: parsed.name, mission: parsed.mission, schedule: parsed.cron, args,
+                });
+                if (!result.ok) {
+                    await sendHtml(ctx, `⚠ ${escapeHtml(result.error)}\n<i>usage: /schedule add &lt;name&gt; "&lt;cron&gt;" &lt;mission&gt; [json-args]</i>`);
+                    return true;
+                }
+                const fmtTs = new Date(result.next_run).toISOString().slice(0, 19).replace('T', ' ');
+                await sendHtml(ctx, `✔ routine <code>${escapeHtml(parsed.name)}</code> created — next run: <code>${escapeHtml(fmtTs)}</code> · mission: <code>${escapeHtml(parsed.mission)}</code>`);
+                return true;
+            }
+            if (sub === 'edit') {
+                const name = parts[2];
+                const field = parts[3];
+                const value = parts.slice(4).join(' ').trim();
+                if (!name || !field || !value) {
+                    await ctx.reply('⚠ usage: /schedule edit <name> <field> <value>  (fields: schedule|priority|args|status)');
+                    return true;
+                }
+                const result = await editRoutine(name, field, value);
+                if (!result.ok) {
+                    await sendHtml(ctx, `⚠ ${escapeHtml(result.error)}`);
+                    return true;
+                }
+                const nextPart = result.next_run ? ` — next run: <code>${escapeHtml(new Date(result.next_run).toISOString().slice(0, 19).replace('T', ' '))}</code>` : '';
+                await sendHtml(ctx, `✔ routine <code>${escapeHtml(name)}</code> updated — <code>${escapeHtml(result.updated)}</code> → <code>${escapeHtml(value.slice(0, 80))}</code>${nextPart}`);
                 return true;
             }
             if (sub === 'pause' && parts[2]) {
@@ -259,11 +374,39 @@ async function handleCommand(ctx, text) {
                 await ctx.reply(ok ? `deleted ${parts[2]}` : `not found: ${parts[2]}`);
                 return true;
             }
-            await ctx.reply('usage: /schedule list | pause <name> | resume <name> | delete <name>');
+            await ctx.reply('usage: /schedule list | pause <name> | resume <name> | delete <name> | add <name> "<cron>" <mission> [json-args] | edit <name> <field> <value>');
             return true;
         }
         case '/mission': {
             const sub = parts[1]?.toLowerCase();
+            if (sub === 'cancel') {
+                const id = Number.parseInt(parts[2] ?? '', 10);
+                if (!Number.isFinite(id)) {
+                    await ctx.reply('usage: /mission cancel <id>');
+                    return true;
+                }
+                const r = cancelMission(id);
+                if (!r.ok) {
+                    await ctx.reply(`⚠ ${r.error}`);
+                    return true;
+                }
+                await ctx.reply(`✔ mission #${id} cancelled`);
+                return true;
+            }
+            if (sub === 'retry') {
+                const id = Number.parseInt(parts[2] ?? '', 10);
+                if (!Number.isFinite(id)) {
+                    await ctx.reply('usage: /mission retry <id>');
+                    return true;
+                }
+                const r = retryMission(id);
+                if (!r.ok) {
+                    await ctx.reply(`⚠ ${r.error}`);
+                    return true;
+                }
+                await ctx.reply(`✔ mission #${id} retried as #${r.newId}`);
+                return true;
+            }
             if (sub === 'run' && parts[2]) {
                 await ctx.reply(`running mission ${parts[2]}…`);
                 try {
@@ -292,7 +435,7 @@ async function handleCommand(ctx, text) {
                 await sendHtml(ctx, `<b>Mission queue</b>\n${lines}`);
                 return true;
             }
-            await ctx.reply('usage: /mission list | run <name>');
+            await ctx.reply('usage: /mission list | run <name> | cancel <id> | retry <id>');
             return true;
         }
         case '/brief': {
@@ -319,7 +462,7 @@ async function handleCommand(ctx, text) {
                 '<code>/capture &lt;text&gt;</code> · <code>/note</code> · <code>/idea</code> · <code>/task</code> · <code>/task-add</code> · <code>/task-list</code> · <code>/task-done</code>',
                 '<code>/thesis</code> · <code>/literature</code> · <code>/journal</code>',
                 '<code>/recall &lt;query&gt;</code> · <code>/reindex</code> · <code>/mirror-thesis [--force]</code>',
-                '<code>/brief</code> · <code>/nudge</code> · <code>/routines</code> · <code>/schedule list|pause|resume|delete</code> · <code>/mission list|run</code>',
+                '<code>/brief</code> · <code>/nudge</code> · <code>/routines</code> · <code>/health</code> · <code>/schedule list|pause|resume|delete|add|edit</code> · <code>/mission list|run|cancel|retry</code>',
                 '<code>/ask [backend] &lt;prompt&gt;</code> · <code>/council [aggregator] &lt;prompt&gt;</code> · <code>/backends</code>',
             ].join('\n'));
             return true;
@@ -480,6 +623,22 @@ async function handleKillPhraseCheck(ctx, text) {
     await executeEmergencyKill(chatId);
     return true;
 }
+async function maybeShowWelcome(ctx, chatId) {
+    // First-run = allowlisted but no sessions yet
+    const session = latestSessionFor(chatId);
+    if (session !== null)
+        return false;
+    // Only fire once per cold start, not on every message
+    // Mark by inserting a dummy session... no — just check again. Since session
+    // starts when the agent first replies, the welcome fires exactly once
+    // (the first non-/start message before any agent reply).
+    await ctx.reply(buildWelcomeHtml(), {
+        parse_mode: 'HTML',
+        reply_markup: buildWelcomeKeyboard(),
+        link_preview_options: { is_disabled: true },
+    });
+    return false; // don't consume the message — let it continue to routing
+}
 async function processMessage(ctx, text) {
     const chatId = String(ctx.chat.id);
     checkIdleLock();
@@ -502,6 +661,11 @@ async function processMessage(ctx, text) {
             return;
     }
     try {
+        // First-run welcome on any plain message before sessions exist
+        const textForFirst = text.trim();
+        if (!textForFirst.startsWith('/start')) {
+            await maybeShowWelcome(ctx, chatId);
+        }
         if (await handleCommand(ctx, text)) {
             audit('command', text.split(/\s+/)[0] ?? '', { chatId });
             return;
@@ -590,6 +754,22 @@ async function processMessage(ctx, text) {
 }
 export function createBot() {
     const bot = new Bot(TELEGRAM_BOT_TOKEN);
+    bot.on('callback_query:data', async (ctx) => {
+        const chatId = String(ctx.chat?.id ?? ctx.from?.id ?? '');
+        if (!isAuthorised(chatId))
+            return;
+        const data = ctx.callbackQuery.data;
+        await ctx.answerCallbackQuery();
+        if (data === 'cmd:routines') {
+            await sendHtml(ctx, routinesHtml());
+        }
+        else if (data === 'cmd:health') {
+            await handleCommand(ctx, '/health');
+        }
+        else if (data === 'cmd:help') {
+            await handleCommand(ctx, '/help');
+        }
+    });
     bot.on('message:text', async (ctx) => {
         const chatId = String(ctx.chat.id);
         if (!isAuthorised(chatId)) {
