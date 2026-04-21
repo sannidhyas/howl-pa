@@ -1,10 +1,23 @@
+import { createRequire } from 'node:module';
 import pino from 'pino';
-import { IS_DEV, LOG_LEVEL } from './config.js';
+// Logger reads env directly so it can load in setup scripts that haven't
+// populated required config values yet (telegram token etc.).
+const LOG_LEVEL = process.env.LOG_LEVEL ?? 'info';
+const IS_DEV = (process.env.NODE_ENV ?? 'development') !== 'production';
 const base = {
     level: LOG_LEVEL,
     base: { pid: process.pid },
 };
-export const logger = IS_DEV
+function hasPinoPretty() {
+    try {
+        createRequire(import.meta.url).resolve('pino-pretty');
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+export const logger = IS_DEV && hasPinoPretty()
     ? pino({
         ...base,
         transport: {

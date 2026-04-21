@@ -1,5 +1,4 @@
-import { expandPath, loadEnv, projectRootFrom } from './env.js';
-import { existsSync } from 'node:fs';
+import { expandPath, loadEnv, projectRootFrom, resolveConfigDir } from './env.js';
 import { join } from 'node:path';
 export const PROJECT_ROOT = projectRootFrom(import.meta.url);
 const raw = loadEnv({ projectDir: PROJECT_ROOT });
@@ -57,26 +56,7 @@ export const PIN_HASH = optional('PIN_HASH');
 export const PIN_SALT = optional('PIN_SALT');
 export const IDLE_LOCK_MINUTES = intOpt('IDLE_LOCK_MINUTES', 30);
 export const KILL_PHRASE = optional('KILL_PHRASE');
-// Paths
-// Resolution order for the runtime config dir (where OAuth tokens and bot
-// state live):
-//   1. CLAUDECLAW_CONFIG / HOWL_CONFIG (explicit override)
-//   2. $XDG_CONFIG_HOME/howl-pa (preferred when shipped as an npm package)
-//   3. ~/.claudeclaw (legacy default; auto-detected if it already exists)
-//   4. ~/.config/howl-pa (fallback for Linux without XDG set)
-function resolveConfigDir() {
-    const explicit = optional('HOWL_CONFIG') ?? optional('CLAUDECLAW_CONFIG');
-    if (explicit)
-        return expandPath(explicit) ?? explicit;
-    const xdg = process.env.XDG_CONFIG_HOME;
-    if (xdg)
-        return join(xdg, 'howl-pa');
-    const legacy = expandPath('~/.claudeclaw');
-    if (legacy && existsSync(legacy))
-        return legacy;
-    const home = process.env.HOME;
-    return home ? join(home, '.config', 'howl-pa') : (expandPath('~/.claudeclaw') ?? '~/.claudeclaw');
-}
+// Paths — single source of truth lives in src/env.ts (resolveConfigDir).
 export const CLAUDECLAW_CONFIG = resolveConfigDir();
 export const VAULT_PATH = expandPath(optional('VAULT_PATH', '~/Documents/vault')) ?? '~/Documents/vault';
 export const STORE_DIR = join(CLAUDECLAW_CONFIG, 'store');

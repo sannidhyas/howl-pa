@@ -1,10 +1,10 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs'
 import { join } from 'node:path'
 import { google, type Auth } from 'googleapis'
-import { CLAUDECLAW_CONFIG } from './config.js'
+import { resolveConfigDir } from './env.js'
 import { logger } from './logger.js'
 
-const TOKEN_FILE = join(CLAUDECLAW_CONFIG, 'google-token.json')
+const TOKEN_FILE = join(resolveConfigDir(), 'google-token.json')
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.modify',
@@ -39,7 +39,7 @@ export function authUrl(): string {
 export async function exchangeCode(code: string): Promise<void> {
   const client = makeClient()
   const { tokens } = await client.getToken(code)
-  mkdirSync(CLAUDECLAW_CONFIG, { recursive: true, mode: 0o700 })
+  mkdirSync(resolveConfigDir(), { recursive: true, mode: 0o700 })
   writeFileSync(TOKEN_FILE, JSON.stringify(tokens, null, 2))
   chmodSync(TOKEN_FILE, 0o600)
   logger.info({ TOKEN_FILE }, 'google token saved')

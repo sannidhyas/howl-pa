@@ -2,6 +2,23 @@ import { readFileSync, existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+// Single source of truth for the runtime config directory. Resolution:
+//   1. explicit override arg
+//   2. HOWL_CONFIG / CLAUDECLAW_CONFIG from process.env
+//   3. $XDG_CONFIG_HOME/howl-pa
+//   4. ~/.claudeclaw (legacy, only if already present)
+//   5. ~/.config/howl-pa (fallback)
+// Keep this in sync with config.ts; both call here.
+export function resolveConfigDir(override?: string): string {
+  const explicit = override ?? process.env.HOWL_CONFIG ?? process.env.CLAUDECLAW_CONFIG
+  if (explicit) return expandPath(explicit) ?? explicit
+  const xdg = process.env.XDG_CONFIG_HOME
+  if (xdg) return join(xdg, 'howl-pa')
+  const legacy = join(homedir(), '.claudeclaw')
+  if (existsSync(legacy)) return legacy
+  return join(homedir(), '.config', 'howl-pa')
+}
+
 const LINE_RE = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/
 
 function parseEnvText(text: string): Record<string, string> {
@@ -39,8 +56,8 @@ type LoadOptions = {
 export function loadEnv(opts: LoadOptions): Record<string, string> {
   const merged: Record<string, string> = {}
 
-  const configDir = expandPath(opts.configDir ?? process.env.CLAUDECLAW_CONFIG ?? '~/.claudeclaw')
-  const configEnvPath = configDir ? join(configDir, '.env') : undefined
+  const configDir = resolveConfigDir(opts.configDir)
+  const configEnvPath = join(configDir, '.env')
   const projectEnvPath = join(opts.projectDir, '.env')
 
   for (const path of [configEnvPath, projectEnvPath]) {
