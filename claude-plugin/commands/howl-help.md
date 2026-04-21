@@ -1,0 +1,6 @@
+---
+description: Show terse Howl PA Claude Code command help.
+disable-model-invocation: false
+---
+
+Do not call a tool. Present this terse command reference: `/howl-status` - runtime status; `/howl-health` - dashboard health JSON summarized; `/howl-schedule` - scheduled routines; `/howl-run <name>` - run a schedule now; `/howl-brief` - run `morning-brief`; `/howl-nudge` - run `evening-nudge`; `/howl-reindex` - run `vault-reindex`; `/howl-mission list|run|cancel|retry|adhoc` - mission catalog and queue actions; `/howl-gmail` - recent Gmail rows; `/howl-calendar [hours]` - upcoming events; `/howl-tasks` - Google Tasks state; `/howl-recall [limit]` - recent memory chunks; `/howl-routing [hours]` - subagent routing stats; `/howl-capture [kind=<kind>] [title="<title>"] <text>` - capture text; `/howl-note <text>` - capture a note; `/howl-idea <text>` - capture an idea; `/howl-memory [list|set|delete] ...` - dashboard memory; `/howl-pause|resume|delete|mute|unmute <schedule-name>` - schedule controls; `/howl-schedule-add <name> <mission> '<cron>'` - create a schedule; `/howl-schedule-edit <name> [fields...]` - edit a schedule; `/howl-whoami` - dashboard identity; `/howl-ask`, `/howl-council`, `/howl-backends`, `/howl-ideas`, `/howl-open`, and `/howl-discard` are Telegram/vault-only stubs until dashboard APIs exist.

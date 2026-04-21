@@ -1,0 +1,6 @@
+---
+description: Manage Howl PA missions from Claude Code.
+disable-model-invocation: false
+---
+
+Parse `$ARGUMENTS` as `list | run <schedule-name> | cancel <id> | retry <id> | adhoc <mission> [args-json]`; if it is missing or invalid, show `Usage: /howl-mission list | run <schedule-name> | cancel <id> | retry <id> | adhoc <mission> [args-json]` and do not call a tool. For `list`, call `howl_missions_catalog` and `howl_subagents` from the `howl-pa` server, present mission ids/descriptions, then show recent subagent dispatches as a proxy and clarify that the live mission task queue exists at `/api/missions` but has no MCP wrapper. For `run`, call `howl_run_now` with `{ "name": "<schedule-name>" }`. For `cancel`, parse the id as a number and call `howl_mission_cancel` with `{ "id": <number> }`. For `retry`, parse the id as a number and call `howl_mission_retry` with `{ "id": <number> }`. For `adhoc`, parse the mission name and optional trailing JSON object as `args`, then call `howl_mission_adhoc` with `{ "mission": "<mission>", "args": <object> }` when args are provided or `{ "mission": "<mission>" }` otherwise. Present results compactly, including `mission_task_id`, `mission_id`, `queued_at`, `status`, and `error` when present.

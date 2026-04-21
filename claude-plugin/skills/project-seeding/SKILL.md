@@ -1,6 +1,6 @@
 ---
 name: project-seeding
-description: Two-pass first-principles project seeding methodology for greenfield or brownfield work. Trigger when the user is kicking off a new project, starting significant work on an existing codebase, or asking for a structured plan before execution. Triggers on phrases like "seed this project", "how should I start", "plan before I code", "kick off", "greenfield", "brownfield", "decompose this goal", "what's my plan", or any request to produce a project plan, architecture plan, or execution plan from a stated goal. Produces FOUNDATIONS.md or LANDSCAPE.md (forward pass), PLAN.md (backward pass), and a reconciled execution task list. Does not write code until after user sign-off.
+description: Two-pass first-principles project seeding methodology for greenfield or brownfield work. Trigger when the user is kicking off a new project, starting significant work on an existing codebase, or asking for a structured plan before execution. Triggers on phrases like "seed this project", "how should I start", "plan before I code", "kick off", "greenfield", "brownfield", "decompose this goal", "what's my plan", "forward-backward thinking", "zero to hero", "illuminate the path", "reconcile plan and foundations", or any request to produce a project plan, architecture plan, or execution plan from a stated goal. Produces FOUNDATIONS.md or LANDSCAPE.md (forward pass), PLAN.md (backward pass), and a reconciled execution task list. Does not write code until after user sign-off.
 ---
 
 # Project Seeding — Two-Pass First-Principles Methodology
@@ -13,6 +13,7 @@ Howl PA's seeding protocol. Every non-trivial project or significant codebase ch
 - Significant work on existing codebase — new subsystem, architectural change, large refactor, feature spanning multiple modules (brownfield)
 - Any explicit request for a project plan, architecture plan, or execution plan from a stated goal
 - User says: "seed this project", "how should I start", "plan before I code", "kick off", "decompose this goal", "what's my plan"
+- User says: "forward-backward thinking", "zero to hero", "illuminate the path", "reconcile plan and foundations"
 
 ## When NOT to use
 
@@ -70,13 +71,34 @@ Starting from the stated deliverable, recursively ask *"what must be true for th
 
 **Hard rule:** no code. Not even pseudocode more than 3 lines. If you catch yourself sketching an implementation, move it to Open Questions.
 
+**Brownfield / large codebases (>5 modules):** Delegate the backward-pass walk to `codex-corps:codex-arch` (design-heavy decomposition) or `codex-corps:codex-research` (read-only spelunking) before writing PLAN.md. Not mandatory for small repos — use judgment.
+
+**DESIGN-CHOICE nodes — council escalation:** When a node is tagged `DESIGN-CHOICE` and the alternative is non-obvious, invoke the `council` skill (sibling skill at `claude-plugin/skills/council/`) to get multi-backend deliberation (Claude + Codex + local Ollama) before locking the choice. Do NOT invoke council for every decision — only when the model itself flags "non-obvious alternative."
+
 ### Phase 3 — Meet in the middle (iterative reconciliation)
 
-**This is a loop, not a one-shot diff.** Forward and backward passes are rarely consistent on the first try. Iterate until every mismatch is either resolved (plan amended, foundation added, or explicitly rejected with a reason) or escalated to an Open Question the user must answer. A single pass that still contains unresolved gaps has not satisfied this phase.
+**This is a loop, not a one-shot diff.** Forward and backward passes are rarely consistent on the first try. Loop until the *illuminated path* criterion is met (defined below). A single pass is never sufficient.
 
-Each iteration writes or updates `RECONCILIATION.md` with a small number of findings. The document is append-only: each cycle adds a new `## Cycle N — <date>` section so you can audit how the plan converged.
+Each iteration writes or updates `RECONCILIATION.md`. The document is append-only: each cycle adds a new `## Cycle N — <date>` section.
 
-**Iteration loop:**
+**Required machine-checkable header per cycle (write this exact line at the top of every cycle section):**
+```
+Cycle N · opened: <k> · closed: <k> · remaining: <k> · new: <k>
+```
+Terminal cycle must read: `remaining: 0 · new: 0`
+
+**Iteration checklist — walk every item every cycle. All must be YES to exit:**
+
+- [ ] C1. Every leaf node in `PLAN.md` is either (a) a concrete task with a named codex-corps specialist assigned (see Integration notes § Routing matrix), or (b) an Open Question the user has explicitly decided — not merely parked.
+- [ ] C2. Zero `PLAN.md` nodes contain unsupported `ASSUMPTION` tags that the user has not signed off on.
+- [ ] C3. Every `HARD` foundation is either referenced in a `PLAN.md` node or explicitly marked "intentionally unused this pass" in `RECONCILIATION.md`.
+- [ ] C4. Zero nodes are tagged `Plan over-reach` (plan assumes a capability the foundations don't provide).
+- [ ] C5. Zero nodes are tagged `Foundation under-exploit` (a foundation capability ignored by the plan without a reason).
+- [ ] C6. `remaining` in the cycle header is 0 AND `new` is 0.
+
+**If any item above is NO → another cycle is required. No exit.**
+
+**Iteration steps (inside each cycle):**
 
 1. **Diff** `FOUNDATIONS.md`/`LANDSCAPE.md` against `PLAN.md`. Catalog every mismatch and classify each one:
    - **Plan over-reach** — plan assumes a capability the foundations don't provide (e.g., plan calls for a vector index, foundations don't include an embedder).
@@ -88,27 +110,40 @@ Each iteration writes or updates `RECONCILIATION.md` with a small number of find
    - Amend `FOUNDATIONS.md`/`LANDSCAPE.md` if a missing or fuzzy foundation is what's breaking alignment.
    - Amend `PLAN.md` if the decomposition had an unsupported assumption or an over-reach.
    - Move genuinely unknown items to the `Open Questions` section of `PLAN.md` with a proposed next step.
-4. **Re-diff**. Count remaining mismatches. If any remain that are not safely parked in Open Questions, go back to step 1.
-5. **Stop** when all three of these are true:
-   - Every node in `PLAN.md` either traces to a `FACT` in `FOUNDATIONS.md`/`LANDSCAPE.md`, is a clearly-tagged `DESIGN-CHOICE` with a stated alternative, or is explicitly an `ASSUMPTION` the user has signed off on.
-   - Every `HARD` foundation either gets exploited somewhere in `PLAN.md` or is documented as "intentionally unused this pass" in `RECONCILIATION.md`.
-   - Every outstanding unknown lives in Open Questions with a next-step, not hidden inside a plan node.
+4. **Re-diff**. Count remaining mismatches. Update the cycle header.
+5. **Walk the checklist above.** If all YES → exit loop. If any NO → increment cycle, go to step 1.
 
-Record in each cycle: mismatches opened, mismatches closed, edits made, remaining gaps. When a cycle closes zero new gaps but opens new ones, pause and show the user — the goal is monotonic convergence, not churn.
+**Stall detection:** If 2 consecutive cycles have the same mismatch ID appearing in `opened` without appearing in `closed`, pause the loop and surface to the user: list the stalled mismatch(es), proposed resolutions, and ask the user to decide. Do not continue spinning.
 
-**Hard rule:** no phase-4 execution until the loop has converged on a cycle that opened zero new gaps and left zero unparked mismatches. "We'll figure this out during implementation" is exactly the analogy-masquerading-as-first-principles trap this phase exists to catch.
+**DESIGN-CHOICE nodes — council escalation:** When a node is tagged `DESIGN-CHOICE` and the alternative is non-obvious, invoke the `council` skill before locking. See Phase 2 note for details.
+
+**Illuminated path criterion (convergence target):** Phase 3 is complete when every leaf node in `PLAN.md` is in one of exactly two terminal states:
+1. **Concrete task** — has a named codex-corps specialist assigned (from the routing matrix in Integration notes).
+2. **Decided Open Question** — user has explicitly decided it (not just acknowledged or parked it).
+
+No leaf may remain in a third state (vague, assumed, or "TBD"). If one does, it is a loop exit blocker.
+
+**Hard rule:** no phase-4 execution until the loop has converged: checklist all-YES, cycle header shows `remaining: 0 · new: 0`, every leaf is in a terminal state.
 
 **Checkpoint:** user reviews the full `RECONCILIATION.md` history (every cycle) and the final state of `FOUNDATIONS.md` + `PLAN.md`. Signs off explicitly. Only then does Phase 4 begin.
 
 ### Phase 4 — Execution plan
 
-Only after Phase 3 sign-off. Produce an ordered task list (in `PLAN.md` under `## Execution` or a separate `TASKS.md`).
+Only after Phase 3 sign-off. Produce a separate `TASKS.md` (not inlined in `PLAN.md`).
 
-- Each task references the originating node in `PLAN.md` and the enabling foundation in `FOUNDATIONS.md` / `LANDSCAPE.md`
-- Format: `- [ ] <task> — from PLAN.md §<n>, relies on FOUNDATIONS §<n>`
-- Tasks ordered by dependency, not by guess
-- Each task is a single commit-worthy unit (atomic)
-- Future sessions reconstruct context by reading the three artifacts; they should not need to re-derive anything
+**Required fields per task:**
+
+| Field | Content |
+|---|---|
+| `ID` | Sequential: `T-001`, `T-002`, … |
+| `Plan §` | Originating node in `PLAN.md` (section + bullet ref) |
+| `Foundation §` | Enabling entry in `FOUNDATIONS.md` or `LANDSCAPE.md` — or `n/a — greenfield` |
+| `Blast radius` | Files and systems this task touches or modifies |
+| `Rollback` | How to undo this task if it breaks something downstream |
+| `Agent` | Assigned codex-corps specialist (from routing matrix in Integration notes) |
+| `Status` | `[ ]` pending / `[x]` done / `[!]` blocked |
+
+**Zero-to-hero output contract:** After Phase 4, `TASKS.md` read top-to-bottom must be a single unambiguous path from "nothing exists" to "deliverable shipped." Tasks are ordered by strict dependency. No "or" forks. No "maybe." No "TBD." If a fork truly exists, it is a loop exit blocker — return to Phase 3.
 
 After this phase, and only this phase, implementation begins.
 
@@ -135,5 +170,26 @@ All writes inside the vault are committed by the bot with a `[mc] seed: <path>` 
 ## Integration notes
 
 - **Skill invocation.** This file is a Claude Code skill. It runs inside a CC session when the triggering language appears (see frontmatter description). Howl PA's TypeScript runtime does not call this skill — skills are session constructs, not runtime code. If Telegram captures an idea, the bot writes the idea to `08_Pipeline/ideas/...` and the user (or a CC agent session) invokes this skill against that seed later to produce the full four-artifact plan.
-- **codex-corps hand-offs (manual, for now).** Phase 2 decomposition and Phase 1 brownfield walks are strong candidates for delegation to `codex-arch`, `codex-research`, or `codex-route`. As of now there is no automatic wiring between this skill and those agents; delegation happens when the user or the orchestrating session explicitly spawns one. Treat it as a documented hand-off point, not an active pipeline.
+- **codex-corps delegation — Phase 1/2.** For brownfield Phase 1 walks and Phase 2 decompositions on codebases >5 modules, delegate to `codex-corps:codex-arch` (design-heavy) or `codex-corps:codex-research` (read-only spelunking). Spawning one of these agents is the documented hand-off point; it is not automatic but is strongly recommended.
+- **codex-corps routing matrix — Phase 4.** Every task in `TASKS.md` requires an `Agent` field populated from this matrix. Use the first match:
+
+  | Task type | Assign |
+  |---|---|
+  | Backend / API / business logic / server flows | `codex-corps:codex-backend` |
+  | Frontend logic — state, hooks, reducers, data flow (NOT visuals) | `codex-corps:codex-frontend-logic` |
+  | UI / visual / CSS / layout / copy | Claude inline — NOT codex-corps |
+  | Stack traces / failing tests / broken behavior | `codex-corps:codex-debugger` |
+  | Restructure without behavior change | `codex-corps:codex-refactor` |
+  | SQL / migrations / ETL / ML | `codex-corps:codex-data` |
+  | CI/CD / Docker / IaC / scripts | `codex-corps:codex-infra` |
+  | Third-party API integration / OAuth / webhooks | `codex-corps:codex-integrate` |
+  | Perf profiling / hotspot optimisation | `codex-corps:codex-perf` |
+  | Framework / version / language migrations | `codex-corps:codex-migrate` |
+  | Docs / READMEs / API refs | `codex-corps:codex-docs` |
+  | Design docs / architecture decisions | `codex-corps:codex-arch` |
+  | Read-only codebase exploration | `codex-corps:codex-research` |
+  | PR / diff review | `codex-corps:codex-reviewer` |
+  | Uncertain — classify first | `codex-corps:codex-route` → then the returned specialist |
+  | Catch-all fallback | `codex-corps:codex-do` |
+
 - **Memory surfacing.** `vault-indexer.ts` scans the whole projecthowl vault on the `vault-reindex` schedule. Any artifact written inside the vault (including seeds under `08_Pipeline/ideas/` or `06_Projects/6N_*/`) becomes visible to `recall()` within one reindex cycle. Artifacts written outside the vault (e.g., inside another repo) are not indexed.
