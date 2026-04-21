@@ -72,7 +72,7 @@ export function inferRole(input: SubagentInput): SubagentRole {
 const claude = new ClaudeBackend()
 const codex = new CodexBackend()
 
-const ollamaModels = (process.env.OLLAMA_MODELS ?? 'qwen2.5-coder:3b,ministral-3:latest,hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:TQ1_0')
+const ollamaModels = (process.env.OLLAMA_MODELS ?? 'qwen2.5-coder:3b,qwen2.5:3b,llama3.2:3b')
   .split(',')
   .map(s => s.trim())
   .filter(Boolean)
