@@ -226,6 +226,7 @@ function applySchema(db) {
       agent_id TEXT NOT NULL DEFAULT 'main',
       status TEXT NOT NULL DEFAULT 'active',
       args TEXT,
+      muted INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
     );
 
@@ -344,6 +345,14 @@ function applySchema(db) {
     }
     catch (err) {
         logger.warn({ err }, 'mission_tasks column migration failed');
+    }
+    const schedCols = db.prepare(`PRAGMA table_info(scheduled_tasks)`).all().map(r => r.name);
+    try {
+        if (!schedCols.includes('muted'))
+            db.exec(`ALTER TABLE scheduled_tasks ADD COLUMN muted INTEGER NOT NULL DEFAULT 0`);
+    }
+    catch (err) {
+        logger.warn({ err }, 'scheduled_tasks column migration failed');
     }
 }
 export function getMirrorState(sourcePath) {
@@ -479,17 +488,30 @@ export function upsertScheduledTask(args) {
 }
 export function listScheduledTasks() {
     return getDb()
-        .prepare(`SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, agent_id, status, args, created_at
+        .prepare(`SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, agent_id, status, args, muted, created_at
        FROM scheduled_tasks ORDER BY next_run`)
         .all();
 }
 export function dueScheduledTasks(now = Date.now()) {
     return getDb()
-        .prepare(`SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, agent_id, status, args, created_at
+        .prepare(`SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, agent_id, status, args, muted, created_at
        FROM scheduled_tasks
        WHERE status = 'active' AND next_run <= ?
        ORDER BY priority DESC, next_run`)
         .all(now);
+}
+export function scheduledTaskById(id) {
+    const row = getDb()
+        .prepare(`SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, agent_id, status, args, muted, created_at
+       FROM scheduled_tasks WHERE id = ?`)
+        .get(id);
+    return row ?? null;
+}
+export function setScheduledTaskMuted(name, muted) {
+    const info = getDb()
+        .prepare(`UPDATE scheduled_tasks SET muted = ? WHERE name = ?`)
+        .run(muted ? 1 : 0, name);
+    return info.changes > 0;
 }
 export function markTaskRunning(id) {
     getDb()

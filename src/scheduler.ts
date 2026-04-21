@@ -182,6 +182,7 @@ async function runScheduled(task: ScheduledTaskRow): Promise<void> {
 export function scheduledTaskSummary(): string[] {
   return listScheduledTasks().map(t => {
     const nextIso = new Date(t.next_run).toISOString().slice(0, 19).replace('T', ' ')
-    return `${t.status === 'active' ? '●' : '○'} ${t.name} · ${t.schedule} · next ${nextIso} · ${t.status}`
+    const muted = t.muted ? ' 🔇' : ''
+    return `${t.status === 'active' ? '●' : '○'} ${t.name}${muted} · ${t.schedule} · next ${nextIso} · ${t.status}`
   })
 }

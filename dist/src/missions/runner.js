@@ -1,5 +1,5 @@
 import { ALLOWED_CHAT_ID } from '../config.js';
-import { audit, enqueueMission, updateMissionTaskStatus, } from '../db.js';
+import { audit, enqueueMission, scheduledTaskById, updateMissionTaskStatus, } from '../db.js';
 import { logger } from '../logger.js';
 import { MISSIONS } from './index.js';
 let runnerOpts = null;
@@ -30,8 +30,20 @@ function buildContext(input) {
         warnedMissingOpts = true;
         logger.warn('mission runner has no scheduler options; using no-op send');
     }
+    // Mute only suppresses scheduler-originated notifications. Explicit user
+    // invocations (telegram/dashboard/adhoc) always deliver — mute is a
+    // "don't page me on the cron beat" switch, not a full silencer.
+    const rawSend = runnerOpts?.send ?? (async () => { });
+    let send = rawSend;
+    if (input.source === 'scheduler' && input.scheduledTaskId) {
+        const row = scheduledTaskById(input.scheduledTaskId);
+        if (row?.muted) {
+            send = async () => { };
+            logger.info({ mission: input.mission, task: row.name }, 'muted routine — suppressing send');
+        }
+    }
     return {
-        send: runnerOpts?.send ?? (async () => { }),
+        send,
         chatId: input.chatId ?? runnerOpts?.defaultChatId ?? String(ALLOWED_CHAT_ID),
         now: new Date(),
         args: input.args,

@@ -14,7 +14,7 @@ function liveUsername() {
 function livePasswordHash() {
     return process.env.DASHBOARD_PASSWORD_HASH ?? DASHBOARD_PASSWORD_HASH_BOOT;
 }
-import { getDb, audit, setTaskStatus, deleteScheduledTask, enqueueMission, updateMissionTaskStatus, updateScheduledFields, upsertScheduledTask, listMemories, getMemory, upsertMemory, deleteMemory, } from './db.js';
+import { getDb, audit, setTaskStatus, setScheduledTaskMuted, deleteScheduledTask, enqueueMission, updateMissionTaskStatus, updateScheduledFields, upsertScheduledTask, listMemories, getMemory, upsertMemory, deleteMemory, } from './db.js';
 import { logger } from './logger.js';
 import { startMission } from './missions/runner.js';
 import { MISSIONS } from './missions/index.js';
@@ -419,7 +419,7 @@ function buildApp() {
         if (gate)
             return gate;
         const builtinNames = new Set(BUILT_INS.map(b => b.name));
-        const data = rows(`SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, status
+        const data = rows(`SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, status, muted
        FROM scheduled_tasks ORDER BY next_run`);
         return c.json({
             rows: data.map(r => ({ ...r, is_builtin: builtinNames.has(r.name) })),
@@ -660,6 +660,40 @@ function buildApp() {
         }
         audit('scheduler_resume', name);
         return c.json({ ok: true, name, status: 'active' });
+    });
+    app.post('/api/scheduler/:name/mute', c => {
+        const gate = requireAuth(c);
+        if (gate)
+            return gate;
+        const ctGate = requireJson(c);
+        if (ctGate)
+            return ctGate;
+        const v = validateName(c);
+        if (v instanceof Response)
+            return v;
+        const { name } = v;
+        if (!setScheduledTaskMuted(name, true)) {
+            return c.json({ ok: false, error: 'not found' }, 404);
+        }
+        audit('scheduler_mute', name);
+        return c.json({ ok: true, name, muted: true });
+    });
+    app.post('/api/scheduler/:name/unmute', c => {
+        const gate = requireAuth(c);
+        if (gate)
+            return gate;
+        const ctGate = requireJson(c);
+        if (ctGate)
+            return ctGate;
+        const v = validateName(c);
+        if (v instanceof Response)
+            return v;
+        const { name } = v;
+        if (!setScheduledTaskMuted(name, false)) {
+            return c.json({ ok: false, error: 'not found' }, 404);
+        }
+        audit('scheduler_unmute', name);
+        return c.json({ ok: true, name, muted: false });
     });
     app.post('/api/scheduler/:name/delete', c => {
         const gate = requireAuth(c);

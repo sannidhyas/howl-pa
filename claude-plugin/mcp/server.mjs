@@ -111,6 +111,26 @@ const TOOLS = [
     },
   },
   {
+    name: 'howl_mute',
+    description: 'Mute Telegram notifications for a scheduled mission. Routine still runs; only the send is suppressed.',
+    inputSchema: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'Schedule name' } },
+      required: ['name'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'howl_unmute',
+    description: 'Re-enable Telegram notifications for a previously muted scheduled mission.',
+    inputSchema: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'Schedule name' } },
+      required: ['name'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'howl_schedule_add',
     description: 'Add a scheduled mission.',
     inputSchema: {
@@ -448,6 +468,14 @@ async function callTool(name, args) {
     case 'howl_delete': {
       const scheduleName = requireStringArg(args, 'name', 'howl_delete')
       return postJson(`/api/scheduler/${encodeURIComponent(scheduleName)}/delete`, {})
+    }
+    case 'howl_mute': {
+      const scheduleName = requireStringArg(args, 'name', 'howl_mute')
+      return postJson(`/api/scheduler/${encodeURIComponent(scheduleName)}/mute`, {})
+    }
+    case 'howl_unmute': {
+      const scheduleName = requireStringArg(args, 'name', 'howl_unmute')
+      return postJson(`/api/scheduler/${encodeURIComponent(scheduleName)}/unmute`, {})
     }
     case 'howl_schedule_add': {
       const body = {

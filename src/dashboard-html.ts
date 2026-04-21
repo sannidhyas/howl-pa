@@ -1375,6 +1375,7 @@ export function dashboardHtml(token: string, username = 'howl'): string {
             <span class="title">\${escapeHtml(r.name)}</span>
             \${r.is_builtin ? '<span class="pill builtin" title="Built-in routine — deletion is soft; will re-register on next restart">★ built-in</span>' : ''}
             <span class="pill \${escapeHtml(r.status)}">\${escapeHtml(r.status)}</span>
+            \${r.muted ? '<span class="pill paused" title="Notifications muted — routine still runs, but Telegram send is suppressed">🔇 muted</span>' : ''}
           </div>
           <div class="sub">\${escapeHtml(r.mission)}</div>
           <div class="meta-row">
@@ -1391,6 +1392,9 @@ export function dashboardHtml(token: string, username = 'howl'): string {
             \${r.status === 'paused'
               ? \`<button class="btn" data-action="resume" data-name="\${escapeHtml(r.name)}">Resume</button>\`
               : \`<button class="btn" data-action="pause" data-name="\${escapeHtml(r.name)}">Pause</button>\`}
+            \${r.muted
+              ? \`<button class="btn" data-action="unmute" data-name="\${escapeHtml(r.name)}" title="Currently muted — click to unmute">🔇 Unmute</button>\`
+              : \`<button class="btn ghost" data-action="mute" data-name="\${escapeHtml(r.name)}" title="Keep running, suppress Telegram notifications">🔔 Mute</button>\`}
             <div class="grow" style="flex:1"></div>
             <button class="btn ghost" data-action="edit" data-name="\${escapeHtml(r.name)}">Edit</button>
             <button class="btn danger" data-action="delete" data-name="\${escapeHtml(r.name)}">Delete</button>
@@ -1419,8 +1423,14 @@ export function dashboardHtml(token: string, username = 'howl'): string {
         if (action === 'run-now') url = '/api/scheduler/' + encodeURIComponent(name) + '/run-now';
         else if (action === 'pause') url = '/api/scheduler/' + encodeURIComponent(name) + '/pause';
         else if (action === 'resume') url = '/api/scheduler/' + encodeURIComponent(name) + '/resume';
+        else if (action === 'mute') url = '/api/scheduler/' + encodeURIComponent(name) + '/mute';
+        else if (action === 'unmute') url = '/api/scheduler/' + encodeURIComponent(name) + '/unmute';
         const r = await postJson(url);
-        toast(action === 'run-now' ? name + ' queued' : name + ' ' + r.status, 'ok');
+        const verb = action === 'run-now' ? 'queued'
+          : action === 'mute' ? 'muted'
+          : action === 'unmute' ? 'unmuted'
+          : r.status;
+        toast(name + ' ' + verb, 'ok');
         await loadRoutines();
       } catch (e) {
         toast(name + ': ' + e.message, 'err');

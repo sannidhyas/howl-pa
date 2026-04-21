@@ -4,7 +4,7 @@ import { logger } from './logger.js';
 import { executeEmergencyKill, checkIdleLock, isLocked, isSecurityEnabled, lock, matchesKillPhrase, touchActivity, unlock, } from './security.js';
 import { redactSecrets, scanForSecrets } from './exfiltration-guard.js';
 import { runAgentWithRetry } from './agent.js';
-import { audit, deleteScheduledTask, latestSessionFor, listMissionTasks, listScheduledTasks, listMemories, getMemory, setTaskStatus, upsertMemory, deleteMemory, } from './db.js';
+import { audit, deleteScheduledTask, latestSessionFor, listMissionTasks, listScheduledTasks, listMemories, getMemory, setScheduledTaskMuted, setTaskStatus, upsertMemory, deleteMemory, } from './db.js';
 import { BUILT_INS, scheduledTaskSummary } from './scheduler.js';
 import { executeMission } from './missions/runner.js';
 import { cronHuman } from './cron-human.js';
@@ -82,7 +82,7 @@ function routinesHtml() {
             .join('\n');
         return `<b>${group.title}</b>\n${lines}`;
     });
-    return `<b>Built-in routines</b>\n\n${sections.join('\n\n')}\n\nPause/resume: <code>/schedule pause &lt;name&gt;</code>, <code>/schedule resume &lt;name&gt;</code>\nRun now: <code>/mission run &lt;name&gt;</code>`;
+    return `<b>Built-in routines</b>\n\n${sections.join('\n\n')}\n\nPause/resume: <code>/schedule pause &lt;name&gt;</code>, <code>/schedule resume &lt;name&gt;</code>\nMute/unmute notifications: <code>/schedule mute &lt;name&gt;</code>, <code>/schedule unmute &lt;name&gt;</code>\nRun now: <code>/mission run &lt;name&gt;</code>`;
 }
 // Parse: /schedule add <name> "<cron>" <mission> [json-args...]
 function parseScheduleAdd(rawText) {
@@ -470,7 +470,17 @@ async function handleCommand(ctx, text) {
                 await ctx.reply(ok ? `deleted ${parts[2]}` : `not found: ${parts[2]}`);
                 return true;
             }
-            await ctx.reply('usage: /schedule list | pause <name> | resume <name> | delete <name> | add <name> "<cron>" <mission> [json-args] | edit <name> <field> <value>');
+            if (sub === 'mute' && parts[2]) {
+                const ok = setScheduledTaskMuted(parts[2], true);
+                await ctx.reply(ok ? `🔇 muted ${parts[2]} (still runs, silent)` : `not found: ${parts[2]}`);
+                return true;
+            }
+            if (sub === 'unmute' && parts[2]) {
+                const ok = setScheduledTaskMuted(parts[2], false);
+                await ctx.reply(ok ? `🔔 unmuted ${parts[2]}` : `not found: ${parts[2]}`);
+                return true;
+            }
+            await ctx.reply('usage: /schedule list | pause <name> | resume <name> | mute <name> | unmute <name> | delete <name> | add <name> "<cron>" <mission> [json-args] | edit <name> <field> <value>');
             return true;
         }
         case '/mission': {
@@ -558,7 +568,7 @@ async function handleCommand(ctx, text) {
                 '<code>/capture &lt;text&gt;</code> · <code>/note</code> · <code>/idea</code> · <code>/task</code> · <code>/task-add</code> · <code>/task-list</code> · <code>/task-done</code>',
                 '<code>/thesis</code> · <code>/literature</code> · <code>/journal</code>',
                 '<code>/recall &lt;query&gt;</code> · <code>/reindex</code> · <code>/mirror-thesis [--force]</code>',
-                '<code>/brief</code> · <code>/nudge</code> · <code>/routines</code> · <code>/health</code> · <code>/schedule list|pause|resume|delete|add|edit</code> · <code>/mission list|run|cancel|retry</code>',
+                '<code>/brief</code> · <code>/nudge</code> · <code>/routines</code> · <code>/health</code> · <code>/schedule list|pause|resume|mute|unmute|delete|add|edit</code> · <code>/mission list|run|cancel|retry</code>',
                 '<code>/memory</code> · <code>/memory add [scope] &lt;key&gt; &lt;value...&gt;</code> · <code>/memory del &lt;scope&gt; &lt;key&gt;</code>',
                 '<code>/ask [backend] &lt;prompt&gt;</code> · <code>/council [aggregator] &lt;prompt&gt;</code> · <code>/backends</code>',
             ].join('\n'));

@@ -242,6 +242,7 @@ function applySchema(db: DatabaseSync): void {
       agent_id TEXT NOT NULL DEFAULT 'main',
       status TEXT NOT NULL DEFAULT 'active',
       args TEXT,
+      muted INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
     );
 
@@ -368,6 +369,16 @@ function applySchema(db: DatabaseSync): void {
       db.exec(`ALTER TABLE mission_tasks ADD COLUMN scheduled_task_id INTEGER`)
   } catch (err) {
     logger.warn({ err }, 'mission_tasks column migration failed')
+  }
+
+  const schedCols = (
+    db.prepare(`PRAGMA table_info(scheduled_tasks)`).all() as Array<{ name: string }>
+  ).map(r => r.name)
+  try {
+    if (!schedCols.includes('muted'))
+      db.exec(`ALTER TABLE scheduled_tasks ADD COLUMN muted INTEGER NOT NULL DEFAULT 0`)
+  } catch (err) {
+    logger.warn({ err }, 'scheduled_tasks column migration failed')
   }
 }
 
@@ -518,6 +529,8 @@ export type AuditEventType =
   | 'scheduler_edit'
   | 'scheduler_pause'
   | 'scheduler_resume'
+  | 'scheduler_mute'
+  | 'scheduler_unmute'
   | 'scheduler_delete'
   | 'mission_adhoc'
   | 'mission_retry'
@@ -704,6 +717,7 @@ export type ScheduledTaskRow = {
   agent_id: string
   status: ScheduledTaskStatus
   args: string | null
+  muted: number
   created_at: number
 }
 
@@ -744,7 +758,7 @@ export function upsertScheduledTask(args: {
 export function listScheduledTasks(): ScheduledTaskRow[] {
   return getDb()
     .prepare(
-      `SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, agent_id, status, args, created_at
+      `SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, agent_id, status, args, muted, created_at
        FROM scheduled_tasks ORDER BY next_run`
     )
     .all() as ScheduledTaskRow[]
@@ -753,12 +767,29 @@ export function listScheduledTasks(): ScheduledTaskRow[] {
 export function dueScheduledTasks(now = Date.now()): ScheduledTaskRow[] {
   return getDb()
     .prepare(
-      `SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, agent_id, status, args, created_at
+      `SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, agent_id, status, args, muted, created_at
        FROM scheduled_tasks
        WHERE status = 'active' AND next_run <= ?
        ORDER BY priority DESC, next_run`
     )
     .all(now) as ScheduledTaskRow[]
+}
+
+export function scheduledTaskById(id: number): ScheduledTaskRow | null {
+  const row = getDb()
+    .prepare(
+      `SELECT id, name, mission, schedule, next_run, last_run, last_result, priority, agent_id, status, args, muted, created_at
+       FROM scheduled_tasks WHERE id = ?`
+    )
+    .get(id) as ScheduledTaskRow | undefined
+  return row ?? null
+}
+
+export function setScheduledTaskMuted(name: string, muted: boolean): boolean {
+  const info = getDb()
+    .prepare(`UPDATE scheduled_tasks SET muted = ? WHERE name = ?`)
+    .run(muted ? 1 : 0, name)
+  return info.changes > 0
 }
 
 export function markTaskRunning(id: number): void {
